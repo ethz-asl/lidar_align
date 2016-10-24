@@ -1,0 +1,9 @@
+<launch>
+
+  <node pkg="lidar_align" name="lidar_align" type="lidar_align">
+    <param name="input_bag_path" value="/home/z/datasets/ibeo/drive1.bag" />
+    <param name="use_n_frames" value="500" />
+    <rosparam file="$(find lidar_align)/cfg/inital_calib.yaml"/>
+  </node>
+
+</launch>
