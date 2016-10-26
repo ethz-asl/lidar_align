@@ -1,4 +1,3 @@
-
 /*
  * Software License Agreement (BSD License)
  *
@@ -39,7 +38,7 @@
  *
  */
 
-#include <hoop_detect/icp.h>
+#include <lidar_align/icp.h>
 
 ICP::ICP() : tgt_pc_ptr_(new pcl::PointCloud<pcl::PointXYZ>) {}
 
@@ -113,20 +112,6 @@ pcl::PointCloud<pcl::PointXYZ> ICP::getTformedSrcPoints(void) {
   return tformed_pc;
 }
 
-void ICP::setSrcFreeRegions(const pcl::PointCloud<pcl::PointXYZ> &src_free_pc) {
-  src_free_pc_ = src_free_pc;
-}
-
-ICP::TransformationD ICP::getCurrentTform(void) {
-  //apparently the only way to convert from a float to a double minkindr tform
-  //without renormalization will almost always trigger invalid rotation check
-  RotationD::RotationMatrix R_mat =
-      T_src_tgt_.getRotation().getRotationMatrix().cast<double>();
-  RotationD R_temp = RotationD::constructAndRenormalize(R_mat);
-  TransformationD::Position p_temp = T_src_tgt_.getPosition().cast<double>();
-  return TransformationD(R_temp, p_temp);
-}
-
 void ICP::setCurrentTform(Transformation T_src_tgt) { T_src_tgt_ = T_src_tgt; }
 
 void ICP::setCurrentTform(TransformationD T_src_tgt) {
@@ -186,37 +171,7 @@ void ICP::removeOutliers(const Eigen::Matrix3Xf &src,
   }
 }
 
-void ICP::findFreeRegionError(std::vector<float> *free_error) {
-  std::vector<int> kdtree_idx(1);
-  std::vector<float> kdtree_dist(1);
-
-  pcl::PointCloud<pcl::PointXYZ> tformed_pc;
-  Eigen::Matrix4f tform = T_src_tgt_.getTransformationMatrix().cast<float>();
-  pcl::transformPointCloud(src_free_pc_, tformed_pc, tform);
-
-  // build alignment matrices
-  for (size_t i = 0; i < tformed_pc.size(); ++i) {
-    tgt_kdtree_.nearestKSearch(tformed_pc[i], 1, kdtree_idx, kdtree_dist);
-
-    free_error->at(i) = -kdtree_dist.front();
-  }
-}
-
-bool ICP::pointsMeetCriteria(float points_threshold, float free_threshold,
-                             const std::vector<float> &dist_error,
-                             const std::vector<float> &free_error) {
-  // note free_error is a negitive (done as a bit of a hack to make everything
-  // about minimizing)
-  if ((dist_error.back() < points_threshold) &&
-      (free_error.back() < free_threshold)) {
-    return true;
-  } else {
-    return false;
-  }
-}
-
-bool ICP::stepICP(float points_threshold, float free_threshold,
-                  float inlier_ratio) {
+bool ICP::stepICP(float inlier_ratio) {
   int npts = src_pc_.size();
   int npts_free = src_free_pc_.size();
   int nkeep = std::ceil(inlier_ratio * npts);
@@ -240,35 +195,23 @@ bool ICP::stepICP(float points_threshold, float free_threshold,
 
   matchPoints(&src, &tgt, &dist_error);
 
-  findFreeRegionError(&free_error);
-
   removeOutliers(src, tgt, dist_error, nkeep, &src_filt, &tgt_filt,
                  &dist_error_filt);
-
-  // place holders value not actually needed
-  Eigen::Matrix3Xf src_filt_free(3, nkeep_free);
-  Eigen::Matrix3Xf tgt_filt_free(3, nkeep_free);
-
-  removeOutliers(src, tgt, free_error, nkeep_free, &src_filt_free,
-                 &tgt_filt_free, &free_error_filt);
 
   if (!getTransformationFromMatchedPoints(src_filt, tgt_filt)) {
     return false;
   }
 
-  return pointsMeetCriteria(points_threshold, -free_threshold, dist_error_filt,
-                            free_error_filt);
+  return true;
 }
 
-bool ICP::runICP(size_t iterations, float points_threshold,
-                 float free_threshold, float inlier_ratio) {
+bool ICP::runICP(size_t iterations, float inlier_ratio) {
   bool successful = false;
-  if ((tgt_pc_ptr_->size() == 0) || (src_pc_.size() == 0) ||
-      (src_free_pc_.size() == 0)) {
+  if ((tgt_pc_ptr_->size() == 0) || (src_pc_.size() == 0)) {
     return successful;
   }
   for (size_t i = 0; i < iterations; ++i) {
-    successful = stepICP(points_threshold, free_threshold, inlier_ratio);
+    successful = stepICP(inlier_ratio);
   }
   return successful;
 }

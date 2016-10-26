@@ -9,7 +9,7 @@ catkin_simple(ALL_DEPS_REQUIRED)
 ############
 # BINARIES #
 ############
-add_executable(lidar_align src/lidar_align.cpp)
+add_executable(lidar_align src/lidar_align_node.cpp src/lidar_aligner.cpp src/rough_opt.cpp)
 target_link_libraries(lidar_align ${catkin_LIBRARIES})
 
 ##########
