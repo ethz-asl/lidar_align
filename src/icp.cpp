@@ -40,7 +40,7 @@
 
 #include <lidar_align/icp.h>
 
-ICP::ICP() : tgt_pc_ptr_(new pcl::PointCloud<pcl::PointXYZ>) {}
+ICP::ICP() : tgt_pc_ptr_(new pcl::PointCloud<pcl::PointXYZI>) {}
 
 bool ICP::getTransformFromCorrelation(const Eigen::Matrix3Xf &src_demean,
                                       const Eigen::Vector3f &src_center,
@@ -90,9 +90,9 @@ bool ICP::getTransformationFromMatchedPoints(const Eigen::Matrix3Xf &src,
                                      tgt_center);
 }
 
-void ICP::setTargetPoints(const pcl::PointCloud<pcl::PointXYZ> &tgt_pc) {
-  tgt_pc_ptr_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZ>>(
-      *(new pcl::PointCloud<pcl::PointXYZ>));
+void ICP::setTargetPoints(const pcl::PointCloud<pcl::PointXYZI> &tgt_pc) {
+  tgt_pc_ptr_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>(
+      *(new pcl::PointCloud<pcl::PointXYZI>));
   std::vector<int> indices;
   pcl::removeNaNFromPointCloud(tgt_pc, *tgt_pc_ptr_, indices);
   if (tgt_pc_ptr_->size() != 0) {
@@ -100,12 +100,12 @@ void ICP::setTargetPoints(const pcl::PointCloud<pcl::PointXYZ> &tgt_pc) {
   }
 }
 
-void ICP::setSrcPoints(const pcl::PointCloud<pcl::PointXYZ> &src_pc) {
+void ICP::setSrcPoints(const pcl::PointCloud<pcl::PointXYZI> &src_pc) {
   src_pc_ = src_pc;
 }
 
-pcl::PointCloud<pcl::PointXYZ> ICP::getTformedSrcPoints(void) {
-  pcl::PointCloud<pcl::PointXYZ> tformed_pc;
+pcl::PointCloud<pcl::PointXYZI> ICP::getTformedSrcPoints(void) {
+  pcl::PointCloud<pcl::PointXYZI> tformed_pc;
   pcl::transformPointCloud(src_pc_, tformed_pc,
                            T_src_tgt_.getTransformationMatrix());
 
@@ -113,6 +113,10 @@ pcl::PointCloud<pcl::PointXYZ> ICP::getTformedSrcPoints(void) {
 }
 
 void ICP::setCurrentTform(Transformation T_src_tgt) { T_src_tgt_ = T_src_tgt; }
+
+ICP::TransformationD ICP::getCurrentTform(){
+  return T_src_tgt_.cast<double>();
+}
 
 void ICP::setCurrentTform(TransformationD T_src_tgt) {
   Transformation::TransformationMatrix T_mat =
@@ -125,7 +129,7 @@ void ICP::matchPoints(Eigen::Matrix3Xf *src, Eigen::Matrix3Xf *tgt,
   std::vector<int> kdtree_idx(1);
   std::vector<float> kdtree_dist(1);
 
-  pcl::PointCloud<pcl::PointXYZ> tformed_pc;
+  pcl::PointCloud<pcl::PointXYZI> tformed_pc;
   Eigen::Matrix4f tform = T_src_tgt_.getTransformationMatrix();
   pcl::transformPointCloud(src_pc_, tformed_pc, tform);
 
@@ -133,7 +137,7 @@ void ICP::matchPoints(Eigen::Matrix3Xf *src, Eigen::Matrix3Xf *tgt,
   for (size_t i = 0; i < src_pc_.size(); ++i) {
     tgt_kdtree_.nearestKSearch(tformed_pc[i], 1, kdtree_idx, kdtree_dist);
 
-    pcl::PointXYZ matching_point = tgt_pc_ptr_->at(kdtree_idx.front());
+    pcl::PointXYZI matching_point = tgt_pc_ptr_->at(kdtree_idx.front());
 
     dist_error->at(i) = kdtree_dist.front();
 
@@ -173,9 +177,7 @@ void ICP::removeOutliers(const Eigen::Matrix3Xf &src,
 
 bool ICP::stepICP(float inlier_ratio) {
   int npts = src_pc_.size();
-  int npts_free = src_free_pc_.size();
   int nkeep = std::ceil(inlier_ratio * npts);
-  int nkeep_free = std::ceil(inlier_ratio * npts_free);
 
   Eigen::Matrix3Xf src(3, npts);
   Eigen::Matrix3Xf tgt(3, npts);
@@ -184,10 +186,8 @@ bool ICP::stepICP(float inlier_ratio) {
   Eigen::Matrix3Xf tgt_filt(3, nkeep);
 
   std::vector<float> dist_error(npts);
-  std::vector<float> free_error(npts_free);
 
   std::vector<float> dist_error_filt(nkeep);
-  std::vector<float> free_error_filt(nkeep_free);
 
   if ((tgt_pc_ptr_->size() == 0) || (src_pc_.size() == 0)) {
     return false;
