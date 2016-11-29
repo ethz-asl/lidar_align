@@ -1,53 +1,43 @@
 #include "lidar_align/refine_opt.h"
 
 RefineOpt::RefineOpt(const std::shared_ptr<const LidarAligner> lidar_aligner_ptr
-                   size_t max_frames, double min_overlap, double overlap_saftey_factor)
+                   size_t max_frames, double min_overlap, double inlier_ratio)
     : lidar_aligner_ptr_(lidar_aligner_ptr),
       max_frames_(max_frames),
       min_overlap_(min_overlap),
-      overlap_saftey_factor_(overlap_saftey_factor) {
+      inlier_ratio_(inlier_ratio) {
 
-  }
+}
+
+RefineOpt::RawDataToMap(double* raw_data);
 
 
 std::map<int, double> RoughOpt::Run(std::map<int, kindr::minimal::QuatTransformation> init_T_lidar_odom) {
-  std::vector<int> lidar_ids = lidar_aligner_ptr_->getLidarIds();
 
-  //construct inital guess (ignore 1st lidar tform to keep things observable)
-  std::vector<double> init_T_
-  for(std::vector<int>::iterator it = (lidar_ids + 1); it != it.end(); ++it){
-    kindr::minimal::QuatTransformation::Vector6 vec = init_T_lidar_odom[it].log();
-    for(size_t i = 0; i < vec.size(); ++i){
-      init_T_.push_back(vec[i]);
-    }
-  }
+  std:vector<double> tform_vec;
+  lidar_aligner_ptr_->GetVecFromTformMap(tform_vec, true);
+  size_t num_params_ = tform_vec.size();
 
+  // Build the problem.
+  Problem problem;
 
-  std::map<int, double> results;
+  CostFunction* cost_function = new NumericDiffCostFunction<RefineOpt, ceres::CENTRAL, 1, 6>(this);
+  problem.AddResidualBlock(this, NULL, tform_vec.data());
 
-  for (int lidar_id : lidar_ids) {
+  // Run the solver!
+  Solver::Options options;
+  options.linear_solver_type = ceres::DENSE_QR;
+  options.minimizer_progress_to_stdout = true;
+  Solver::Summary summary;
+  Solve(options, &problem, &summary);
+}
 
-    std::vector<double> x, y;
-    
-    size_t use_n_frames = std::min(
-        max_frames_, lidar_aligner_ptr_->getNumFrames(lidar_id) - 1);
-    for (size_t i = 0; i < use_n_frames; ++i) {
-      kindr::minimal::QuatTransformation T;
+bool RefineOpt::operator()(const double* const tform_vec_raw, double* residual){
 
-      T = lidar_aligner_ptr_->getICPTransformBetweenTimesteps(T, lidar_id, i, inlier_ratio_, iterations_);
-      x.push_back(T.getPosition()(0));
-      y.push_back(T.getPosition()(1));
-      //ROS_ERROR_STREAM("Lidar: " << lidar_id << " scan: " << i << " tform: " << T.log());
-    }
+  std::vector<double> tform_vec;
+  tform_vec.assign(tform_vec_raw, tform_vec_raw + num_params_);
+  lidar_aligner_ptr_->SetTformMapFromVec(tform_vec, true);
+  *residual = lidar_aligne_ptr->getErrorBetweenOverlappingLidars(inlier_ratio_, min_overlap_);
 
-    std::sort(x.begin(), x.end());
-    double median_x = x[x.size()/2];
-    std::sort(y.begin(), y.end());
-    double median_y = y[y.size()/2];
-
-    double angle = std::atan2(median_y, median_x);
-    results[lidar_id] = angle;
-    ROS_ERROR_STREAM("Lidar: " << lidar_id << " angle: " << angle);
-
-  }
+  return true;
 }

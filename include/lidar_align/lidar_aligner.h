@@ -24,67 +24,99 @@
 #include <limits>
 
 #include "lidar_align/icp.h"
+#include "lidar_align/multi_icp.h"
+
+constexpr double kDefaultInlierRatio = 0.7;
+constexpr size_t kDefaultIterations = 20;
 
 class LidarAligner {
  public:
+  typedef int LidarId;
+  typedef double Scalar;
+
+  typedef kindr::minimal::QuatTransformationTemplate<Scalar> Transform;
+  typedef pcl::PointCloud<pcl::PointXYZI> Pointcloud;
+
   LidarAligner(const ros::NodeHandle& nh, const ros::NodeHandle& nh_private);
 
-  bool operator()(const double* const tform_vec, double* residual) const;
-
-  void addLidarScan(const pcl::PointCloud<pcl::PointXYZI>& pointcloud,
+  void addLidarScan(const Pointcloud& pointcloud,
                     const std::string& lidar_topic);
 
-  void addLidarScan(const pcl::PointCloud<pcl::PointXYZI>& pointcloud,
-                    const int lidar_id);
+  void addLidarScan(const Pointcloud& pointcloud, const LidarId lidar_id);
 
-  double getErrorBetweenLidars(
-      const kindr::minimal::QuatTransformation T_A_B, int lidar_A_id,
-      int lidar_B_id, double inlier_ratio) const;
+  Scalar getErrorBetweenTimesteps(const Transform T_At_Atp1, LidarId lidar_A_id,
+                                  size_t t_idx, Scalar inlier_ratio) const;
 
-  double getErrorBetweenTimesteps(
-      const kindr::minimal::QuatTransformation T_At_Atp1, int lidar_A_id,
-      size_t t_idx, double inlier_ratio) const;
+  Transform getICPTransformBetweenTimesteps(const Transform& T_At_Atp1_inital,
+                                            const LidarId lidar_A_id,
+                                            const size_t t_idx,
+                                            const Scalar inlier_ratio,
+                                            const size_t iterations) const;
 
-kindr::minimal::QuatTransformation getICPTransformBetweenTimesteps(
-    const kindr::minimal::QuatTransformation T_At_Atp1_in, int lidar_A_id,
-    size_t t_idx, double inlier_ratio, size_t iterations) const;
+  Transform getICPTransformBetweenLidars(const LidarId lidar_A_id,
+                                         const LidarId lidar_B_id,
+                                         const Scalar inlier_saftey_margin,
+                                         const size_t iterations) const;
+
+  Scalar getErrorBetweenOverlappingLidars(Scalar inlier_ratio,
+                                          Scalar min_overlap) const;
 
   bool hasAtleastNScans(size_t n) const;
 
-  std::vector<int> getLidarIds() const;
+  std::vector<LidarId> getLidarIds() const;
 
-  size_t getNumFrames(int lidar_id) const;
+  size_t getNumScans(LidarId lidar_id) const;
 
-  kindr::minimal::QuatTransformation getTransformAB(int lidar_A_id,
-                                                    int lidar_B_id);
+  size_t getNumLidars() const;
 
-  static kindr::minimal::QuatTransformation Vec6ToTform(
-      const double* const vec6);
+  void updateTformMapFromVec(const std::vector<Scalar>& vec,
+                             const bool skip_first = false);
+
+  void getVecFromTformMap(std::vector<Scalar>* vec,
+                          const bool skip_first = false) const;
+
+  void setTform(const Transform T_l_o, int lidar_id);
+
+  Transform getTransformAB(LidarId lidar_A_id, LidarId lidar_B_id) const;
+
+  bool getTransformAtAtp1(LidarId lidar_A_id, size_t t_idx,
+                          Transform* T_At_Atp1) const;
+
+  double getSensorOverlap(LidarId lidar_A_id, LidarId lidar_B_id) const;
+
+  /*static kindr::minimal::QuatTransformation Vec6ToTform(
+      const Scalar* const vec6);
 
   static kindr::minimal::QuatTransformation Vec6ToTform(
       const kindr::minimal::QuatTransformation::Vector6& vec6);
 
   static kindr::minimal::QuatTransformation Vec3ToTform(
-      const double* const vec3);
+      const Scalar* const vec3);
 
   static kindr::minimal::QuatTransformation Vec3ToTform(
-      const kindr::minimal::QuatTransformation::Vector3& vec3);
+      const kindr::minimal::QuatTransformation::Vector3& vec3);*/
 
  private:
   // minimum distance a point can be from the scanner and be considered valid
   // (set negative to disable)
-  static constexpr double kDefaultMinDistanceFilter = 2;
-  double min_distance_filter_;
+  static constexpr Scalar kDefaultMinDistanceFilter = 2;
+  Scalar min_distance_filter_;
 
-  std::map<int, std::vector<pcl::PointCloud<pcl::PointXYZI>>> lidar_data_;
-  std::map<int, kindr::minimal::QuatTransformation> tforms_;
+  std::map<LidarId, std::vector<Pointcloud>> lidar_data_;
+  std::map<LidarId, Transform> T_o_l_;  // odom to lidar transform
+  std::map<LidarId, std::vector<Transform>>
+      T_lt_ltp1_;  // lidar to same lidar at next timestep transform
+  // std::map<LidarId, std::vector<Pointcloud>> lidar_data_sync_;
 
   ros::NodeHandle nh_;
   ros::NodeHandle nh_private_;
 
-  void filterPointcloud(const pcl::PointCloud<pcl::PointXYZI>& in,
-                        pcl::PointCloud<pcl::PointXYZI>* out);
+  Scalar getErrorBetweenTwoLidars(LidarId lidar_A_id, LidarId lidar_B_id,
+                                  Scalar inlier_ratio) const;
+
+  void filterPointcloud(const Pointcloud& in, Pointcloud* out);
+
   void get_init_tforms();
 };
 
-#endif //LIDAR_ALIGNER_H
+#endif  // LIDAR_ALIGNER_H

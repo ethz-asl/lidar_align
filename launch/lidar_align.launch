@@ -6,7 +6,4 @@
     <rosparam file="$(find lidar_align)/cfg/inital_calib.yaml"/>
   </node>
 
-  <node pkg="rovio" name="rovio" type="rovio_node" launch-prefix="gdb -ex run">
-  </node>
-
 </launch>

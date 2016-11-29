@@ -54,6 +54,8 @@
 
 class ICP {
  public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
   // Transformation type for defining sensor orientation. (internally use floats
   // for speed, externally use doubles for compatability)
   typedef kindr::minimal::QuatTransformationTemplate<float> Transformation;
@@ -63,13 +65,13 @@ class ICP {
 
   ICP();
 
-  void setTargetPoints(const pcl::PointCloud<pcl::PointXYZI> &tgt_pc);
+  void setTgtPoints(const pcl::PointCloud<pcl::PointXYZI> &tgt_pc);
 
   void setSrcPoints(const pcl::PointCloud<pcl::PointXYZI> &src_pc);
 
-  pcl::PointCloud<pcl::PointXYZI> getTformedSrcPoints();
+  pcl::PointCloud<pcl::PointXYZI> getTformedSrcPoints() const;
 
-  TransformationD getCurrentTform();
+  TransformationD getCurrentTform() const;
 
   void setCurrentTform(Transformation T_src_tgt);
 
@@ -77,25 +79,30 @@ class ICP {
 
   bool runICP(size_t iterations, float inlier_ratio);
 
- private:
-  Transformation T_src_tgt_;
+  bool getFilteredMatchingPoints(float inlier_ratio,
+                                    Eigen::Matrix3Xf *src_filt,
+                                    Eigen::Matrix3Xf *tgt_filt) const;
+
+  static  bool getTransformationFromMatchedPoints(const Eigen::Matrix3Xf &src,
+                                          const Eigen::Matrix3Xf &tgt, Transformation* T_src_tgt);
 
   pcl::PointCloud<pcl::PointXYZI> src_pc_;
   pcl::PointCloud<pcl::PointXYZI>::Ptr tgt_pc_ptr_;
   pcl::KdTreeFLANN<pcl::PointXYZI> tgt_kdtree_;
 
-  bool getTransformFromCorrelation(const Eigen::Matrix3Xf &src_demean,
+
+ private:
+  Transformation T_src_tgt_;
+
+  static bool getTransformFromCorrelation(const Eigen::Matrix3Xf &src_demean,
                                    const Eigen::Vector3f &src_center,
                                    const Eigen::Matrix3Xf &tgt_demean,
-                                   const Eigen::Vector3f &tgt_center);
-
-  bool getTransformationFromMatchedPoints(const Eigen::Matrix3Xf &src,
-                                          const Eigen::Matrix3Xf &tgt);
+                                   const Eigen::Vector3f &tgt_center, Transformation* T_src_tgt);
 
   void matchPoints(Eigen::Matrix3Xf *src, Eigen::Matrix3Xf *tgt,
-                   std::vector<float> *dist_error);
+                   std::vector<float> *dist_error) const;
 
-  void removeOutliers(const Eigen::Matrix3Xf &src, const Eigen::Matrix3Xf &tgt,
+  static void removeOutliers(const Eigen::Matrix3Xf &src, const Eigen::Matrix3Xf &tgt,
                       const std::vector<float> &dist_error, float num_keep,
                       Eigen::Matrix3Xf *src_filt, Eigen::Matrix3Xf *tgt_filt,
                       std::vector<float> *dist_error_filt);

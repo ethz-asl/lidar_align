@@ -1,99 +1,199 @@
 #include "lidar_align/lidar_aligner.h"
 
-double LidarAligner::getErrorBetweenTimesteps(const kindr::minimal::QuatTransformation T_At_Atp1,
-                              int lidar_A_id, size_t t_idx, double inlier_ratio) const{
-  double total_err = 0;
+LidarAligner::LidarAligner(const ros::NodeHandle& nh,
+                           const ros::NodeHandle& nh_private)
+    : nh_(nh), nh_private_(nh_private) {
+  nh_private_.param("min_distance_filter", min_distance_filter_,
+                    kDefaultMinDistanceFilter);
+}
 
-    pcl::KdTreeFLANN<pcl::PointXYZI> scan_At_kdtree;
-    pcl::PointCloud<pcl::PointXYZI>::Ptr scan_At_ptr =
-        boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>(
-            *(new pcl::PointCloud<pcl::PointXYZI>));
+LidarAligner::Scalar LidarAligner::getErrorBetweenTimesteps(
+    const Transform T_At_Atp1, LidarId lidar_A_id, size_t t_idx,
+    Scalar inlier_ratio) const {
+  Scalar total_err = 0;
 
-    pcl::transformPointCloud(lidar_data_.at(lidar_A_id)[t_idx], *scan_At_ptr,
-                             T_At_Atp1.inverse().cast<float>().getTransformationMatrix());
+  pcl::KdTreeFLANN<pcl::PointXYZI> scan_At_kdtree;
+  Pointcloud::Ptr scan_At_ptr =
+      boost::make_shared<Pointcloud>(*(new Pointcloud));
 
+  pcl::transformPointCloud(
+      lidar_data_.at(lidar_A_id)[t_idx], *scan_At_ptr,
+      T_At_Atp1.inverse().cast<float>().getTransformationMatrix());
 
-    scan_At_kdtree.setInputCloud(scan_At_ptr);
+  scan_At_kdtree.setInputCloud(scan_At_ptr);
 
-    std::vector<int> kdtree_idx(1);
-    std::vector<float> kdtree_dist(1);
+  std::vector<int> kdtree_idx(1);
+  std::vector<float> kdtree_dist(1);
 
-    std::vector<float> raw_error;
-    for (pcl::PointXYZI point : lidar_data_.at(lidar_A_id)[t_idx+1]) {
-      scan_At_kdtree.nearestKSearch(point, 1, kdtree_idx, kdtree_dist);
-      raw_error.push_back(kdtree_dist[0]);
-    }
+  std::vector<float> raw_error;
+  for (pcl::PointXYZI point : lidar_data_.at(lidar_A_id)[t_idx + 1]) {
+    scan_At_kdtree.nearestKSearch(point, 1, kdtree_idx, kdtree_dist);
+    raw_error.push_back(kdtree_dist[0]);
+  }
 
-    std::sort(raw_error.begin(), raw_error.end());
-    total_err += std::accumulate(
-        raw_error.begin(),
-        raw_error.begin() + std::ceil(inlier_ratio * raw_error.size()), 0.0f);
+  std::sort(raw_error.begin(), raw_error.end());
+  total_err += std::accumulate(
+      raw_error.begin(),
+      raw_error.begin() + std::ceil(inlier_ratio * raw_error.size()), 0.0f);
 
-    //pcl::io::savePLYFile("/home/z/datasets/ibeo/A.ply", *scan_At_ptr);
-    //pcl::io::savePLYFile("/home/z/datasets/ibeo/B.ply", lidar_data_.at(lidar_A_id)[t_idx+1]);
+  // pcl::io::savePLYFile("/home/z/datasets/ibeo/A.ply", *scan_At_ptr);
+  // pcl::io::savePLYFile("/home/z/datasets/ibeo/B.ply",
+  // lidar_data_.at(lidar_A_id)[t_idx+1]);
 
   return total_err;
 }
 
-kindr::minimal::QuatTransformation LidarAligner::getICPTransformBetweenTimesteps(
-    const kindr::minimal::QuatTransformation T_At_Atp1_in, int lidar_A_id,
-    size_t t_idx, double inlier_ratio, size_t iterations) const{
-
+LidarAligner::Transform LidarAligner::getICPTransformBetweenTimesteps(
+    const Transform& T_At_Atp1_inital, const LidarId lidar_A_id,
+    const size_t t_idx, const Scalar inlier_ratio,
+    const size_t iterations) const {
   ICP icp;
-  kindr::minimal::QuatTransformation T_At_Atp1_out = T_At_Atp1_in;
+  Transform T_At_Atp1 = T_At_Atp1_inital;
 
-  if(lidar_data_.count(lidar_A_id) == 0){
-    ROS_ERROR_STREAM("Lidar id " << lidar_A_id  << " not found");
-    return T_At_Atp1_out;
+  if (lidar_data_.count(lidar_A_id) == 0) {
+    ROS_ERROR_STREAM("Lidar id " << lidar_A_id << " not found");
+    return T_At_Atp1;
   }
 
-  if(lidar_data_.at(lidar_A_id).size() <= t_idx+1){
-    ROS_ERROR_STREAM("Cannot access scan " << (t_idx+1) << " of lidar with id " << lidar_A_id << ", not enough scans");
-    return T_At_Atp1_out;
+  if (lidar_data_.at(lidar_A_id).size() <= t_idx + 1) {
+    ROS_ERROR_STREAM("Cannot access scan " << (t_idx + 1)
+                                           << " of lidar with id " << lidar_A_id
+                                           << ", not enough scans");
+    return T_At_Atp1;
   }
 
-  icp.setTargetPoints(lidar_data_.at(lidar_A_id)[t_idx]);
-  icp.setSrcPoints(lidar_data_.at(lidar_A_id)[t_idx+1]);
-  icp.setCurrentTform(T_At_Atp1_in);
+  icp.setTgtPoints(lidar_data_.at(lidar_A_id)[t_idx]);
+  icp.setSrcPoints(lidar_data_.at(lidar_A_id)[t_idx + 1]);
+  icp.setCurrentTform(T_At_Atp1);
 
-  if(icp.runICP(iterations, inlier_ratio)){
-    T_At_Atp1_out = icp.getCurrentTform();
+  if (icp.runICP(iterations, inlier_ratio)) {
+    T_At_Atp1 = icp.getCurrentTform();
   }
 
-  return T_At_Atp1_out;
+  return T_At_Atp1;
 }
 
-kindr::minimal::QuatTransformation LidarAligner::Vec6ToTform(const double* const vec6){
-  return Vec6ToTform(kindr::minimal::QuatTransformation::Vector6(vec6));
+LidarAligner::Transform LidarAligner::getICPTransformBetweenLidars(const LidarId lidar_A_id,
+    const LidarId lidar_B_id, const Scalar inlier_saftey_margin,
+    const size_t iterations) const {
+  MultiICP micp;
+  Transform T_A_B = getTransformAB(lidar_A_id, lidar_B_id);
+
+  if (lidar_data_.count(lidar_A_id) == 0) {
+    ROS_ERROR_STREAM("Lidar id " << lidar_A_id << " not found");
+    return T_A_B;
+  }
+  if (lidar_data_.count(lidar_B_id) == 0) {
+    ROS_ERROR_STREAM("Lidar id " << lidar_B_id << " not found");
+    return T_A_B;
+  }
+
+  const size_t num_scans = std::min(lidar_data_.at(lidar_A_id).size(),
+                                    lidar_data_.at(lidar_B_id).size());
+
+  float inlier_ratio =
+      getSensorOverlap(lidar_A_id, lidar_B_id) * inlier_saftey_margin;
+  if (inlier_ratio < 0) {
+    ROS_ERROR_STREAM("Inlier ratio too small, skipping");
+    return T_A_B;
+  }
+
+  ROS_ERROR_STREAM("Num scans " << num_scans);
+  ROS_ERROR_STREAM("inlier ratio " << inlier_ratio);
+  for (size_t i = 0; i < num_scans; ++i) {
+    micp.addPointCloud(lidar_data_.at(lidar_A_id)[i],
+                       lidar_data_.at(lidar_B_id)[i], inlier_ratio);
+  }
+
+  ROS_ERROR_STREAM("T in \n " << T_A_B);
+  micp.setCurrentTform(T_A_B);
+
+  if (micp.runMultiICP(iterations)) {
+    T_A_B = micp.getCurrentTform();
+  }
+
+  return T_A_B;
 }
 
-kindr::minimal::QuatTransformation LidarAligner::Vec6ToTform(const kindr::minimal::QuatTransformation::Vector6& vec6){
-  return kindr::minimal::QuatTransformation::exp(vec6);
+void LidarAligner::updateTformMapFromVec(const std::vector<Scalar>& vec,
+                                         const bool skip_first) {
+  std::vector<LidarId> lidar_ids = getLidarIds();
+  std::vector<Scalar>::const_iterator vec_it = vec.begin();
+  for (std::vector<LidarId>::iterator id_it = (lidar_ids.begin() + skip_first);
+       id_it != lidar_ids.end(); ++id_it) {
+    Transform::Vector6 vec6;
+    for (size_t i = 0; i < vec6.size(); ++i) {
+      vec6(i) = *vec_it;
+      ++vec_it;
+    }
+    T_o_l_[*id_it] = Transform(vec6);
+  }
 }
 
-kindr::minimal::QuatTransformation LidarAligner::Vec3ToTform(const double* const vec3){
-    return Vec3ToTform(kindr::minimal::QuatTransformation::Vector3(vec3));
+void LidarAligner::getVecFromTformMap(std::vector<Scalar>* vec,
+                                      const bool skip_first) const {
+  std::vector<LidarId> lidar_ids = getLidarIds();
+  vec->clear();
+  for (std::vector<LidarId>::iterator it = (lidar_ids.begin() + skip_first);
+       it != lidar_ids.end(); ++it) {
+    Transform::Vector6 vec6 = T_o_l_.at(*it).log();
+    for (size_t i = 0; i < vec6.size(); ++i) {
+      vec->push_back(vec6[i]);
+    }
+  }
 }
 
-kindr::minimal::QuatTransformation LidarAligner::Vec3ToTform(const kindr::minimal::QuatTransformation::Vector3& vec3){
-  kindr::minimal::QuatTransformation::Vector6 vec6;
+double LidarAligner::getSensorOverlap(const LidarId lidar_A_id,
+                                      const LidarId lidar_B_id) const {
+  Scalar angle = T_o_l_.at(lidar_A_id)
+                     .getRotation()
+                     .getDisparityAngle(T_o_l_.at(lidar_B_id).getRotation());
+  double lidar_beam_angle =
+      3;  // TODO should be calculated from input data
+  return (lidar_beam_angle - std::abs(angle)) / lidar_beam_angle;
+}
+
+void LidarAligner::setTform(const Transform T_o_l, LidarId lidar_id) {
+  T_o_l_[lidar_id] = T_o_l;
+}
+
+/*Transform LidarAligner::Vec6ToTform(const Scalar*
+const vec6){
+  return Vec6ToTform(Transform::Vector6(vec6));
+}
+
+Transform LidarAligner::Vec6ToTform(const
+Transform::Vector6& vec6){
+  return Transform::exp(vec6);
+}
+
+Transform LidarAligner::Vec3ToTform(const Scalar* const
+vec3){
+    return Vec3ToTform(Transform::Vector3(vec3));
+}
+
+Transform LidarAligner::Vec3ToTform(const
+Transform::Vector3& vec3){
+  Transform::Vector6 vec6;
   vec6(0) = vec3(0);
   vec6(1) = vec3(1);
   vec6(5) = vec3(2);
-  return kindr::minimal::QuatTransformation::exp(vec6);
-}
+  return Transform::exp(vec6);
+}*/
 
-double LidarAligner::getErrorBetweenLidars(const kindr::minimal::QuatTransformation T_A_B,
-                              int lidar_A_id, int lidar_B_id, double inlier_ratio) const{
-  double total_err = 0;
+LidarAligner::Scalar LidarAligner::getErrorBetweenTwoLidars(
+    LidarId lidar_A_id, LidarId lidar_B_id, Scalar inlier_ratio) const {
+  Transform T_A_B = T_o_l_.at(lidar_A_id).inverse() * T_o_l_.at(lidar_B_id);
+
+  Scalar total_err = 0;
   for (size_t i = 0; i < lidar_data_.at(lidar_A_id).size(); ++i) {
     pcl::KdTreeFLANN<pcl::PointXYZI> scan_A_kdtree;
-    pcl::PointCloud<pcl::PointXYZI>::Ptr scan_A_ptr =
-        boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>(
-            *(new pcl::PointCloud<pcl::PointXYZI>));
+    Pointcloud::Ptr scan_A_ptr =
+        boost::make_shared<Pointcloud>(*(new Pointcloud));
 
-    pcl::transformPointCloud(lidar_data_.at(lidar_A_id)[i], *scan_A_ptr,
-                             T_A_B.inverse().cast<float>().getTransformationMatrix());
+    pcl::transformPointCloud(
+        lidar_data_.at(lidar_A_id)[i], *scan_A_ptr,
+        T_A_B.inverse().cast<float>().getTransformationMatrix());
 
     // if(i == 1){
     //  pcl::io::savePLYFile("/home/z/datasets/ibeo/A.ply", *scan_A_ptr);
@@ -102,7 +202,7 @@ double LidarAligner::getErrorBetweenLidars(const kindr::minimal::QuatTransformat
 
     scan_A_kdtree.setInputCloud(scan_A_ptr);
 
-    std::vector<int> kdtree_idx(1);
+    std::vector<LidarId> kdtree_idx(1);
     std::vector<float> kdtree_dist(1);
 
     std::vector<float> raw_error;
@@ -112,86 +212,106 @@ double LidarAligner::getErrorBetweenLidars(const kindr::minimal::QuatTransformat
     }
 
     std::sort(raw_error.begin(), raw_error.end());
-    total_err += std::accumulate(
-        raw_error.begin(),
-        raw_error.begin() + std::ceil(inlier_ratio * raw_error.size()), 0.0f);
+    size_t num_points = std::ceil(inlier_ratio * raw_error.size());
+    total_err += std::accumulate(raw_error.begin(),
+                                 raw_error.begin() + num_points, 0.0f) /
+                 static_cast<Scalar>(num_points);
   }
+
+  // using mean instead of sum prevents bias towards maximizing sensor overlap
+  total_err /= static_cast<Scalar>(lidar_data_.at(lidar_A_id).size());
 
   return total_err;
 }
 
-void LidarAligner::filterPointcloud(const pcl::PointCloud<pcl::PointXYZI>& in,
-                                    pcl::PointCloud<pcl::PointXYZI>* out) {
+LidarAligner::Scalar LidarAligner::getErrorBetweenOverlappingLidars(
+    Scalar inlier_ratio, Scalar min_overlap) const {
+  std::vector<LidarId> lidar_ids = getLidarIds();
+  Scalar total_err = 0;
+  size_t num_compared = 0;
+  for (size_t i = 0; i < lidar_ids.size(); ++i) {
+    for (size_t j = 0; j < lidar_ids.size(); ++j) {
+      if (i != j) {
+        Scalar overlap = getSensorOverlap(i, j);
+        if (overlap > min_overlap) {
+          ++num_compared;
+          total_err += getErrorBetweenTwoLidars(lidar_ids[i], lidar_ids[j],
+                                                inlier_ratio * overlap);
+        }
+      }
+    }
+  }
+
+  total_err /= static_cast<Scalar>(num_compared);
+  return total_err;
+}
+
+void LidarAligner::filterPointcloud(const Pointcloud& in, Pointcloud* out) {
   out->clear();
   for (pcl::PointXYZI point : in) {
     float sq_dist = point.x * point.x + point.y * point.y + point.z * point.z;
-    if (std::isfinite(sq_dist) && sq_dist > (min_distance_filter_ * min_distance_filter_)) {
+    if (std::isfinite(sq_dist) &&
+        (sq_dist > (min_distance_filter_ * min_distance_filter_)) && (sq_dist < (100 * 100))) {
       out->push_back(point);
     }
   }
 }
 
-bool LidarAligner::operator()(
-    const double* const tform_vec, double* residual) const {
-
-  kindr::minimal::QuatTransformation tform = Vec6ToTform(tform_vec);
-  residual[0] = getErrorBetweenLidars(tform, 1, 3, 0.2);
-
-  return true;
-}
-
-LidarAligner::LidarAligner(const ros::NodeHandle& nh, const ros::NodeHandle& nh_private)
-    : nh_(nh), nh_private_(nh_private) {
-  nh_private_.param("min_distance_filter", min_distance_filter_, kDefaultMinDistanceFilter);
-}
-
-void LidarAligner::addLidarScan(
-    const pcl::PointCloud<pcl::PointXYZI>& pointcloud,
-    const std::string& lidar_topic) {
-
-  //ugly hack that I will probably regret later
-  if(lidar_topic.find("upper") == std::string::npos){
+void LidarAligner::addLidarScan(const Pointcloud& pointcloud,
+                                const std::string& lidar_topic) {
+  // ugly hack that I will probably regret later
+  if (lidar_topic.find("lower") == std::string::npos) {
     return;
   }
 
   std::string topic_start = "lidar_";
 
-  int lidar_id = std::strtol(&lidar_topic[lidar_topic.find(topic_start) + topic_start.size()], nullptr, 10);
+  LidarId lidar_id = std::strtol(
+      &lidar_topic[lidar_topic.find(topic_start) + topic_start.size()], nullptr,
+      10);
   addLidarScan(pointcloud, lidar_id);
 }
 
-void LidarAligner::addLidarScan(
-    const pcl::PointCloud<pcl::PointXYZI>& pointcloud, const int lidar_id) {
-  pcl::PointCloud<pcl::PointXYZI> pointcloud_filtered;
+void LidarAligner::addLidarScan(const Pointcloud& pointcloud,
+                                const LidarId lidar_id) {
+  Pointcloud pointcloud_filtered;
   filterPointcloud(pointcloud, &pointcloud_filtered);
 
   lidar_data_[lidar_id].push_back(pointcloud_filtered);
 
-  //if transform hasn't been loaded
-  if (!tforms_.count(lidar_id)){
-    //add inital transform
-    XmlRpc::XmlRpcValue T_odom_lidar_xml;
-    kindr::minimal::QuatTransformation T_odom_lidar;
+  // find lidar to lidar tform
+  if (lidar_data_[lidar_id].size() > 1) {
+    Transform T_inital;
 
-    std::string lidar_tform_name = std::string("T_O_L") + std::to_string(lidar_id);
+    T_lt_ltp1_[lidar_id].push_back(getICPTransformBetweenTimesteps(
+        T_inital, lidar_id, lidar_data_[lidar_id].size() - 2,
+        kDefaultInlierRatio, kDefaultIterations));
 
-    if (nh_private_.getParam(lidar_tform_name, T_odom_lidar_xml)) {
-      kindr::minimal::xmlRpcToKindr(T_odom_lidar_xml, &T_odom_lidar);
-    } else {
-      ROS_WARN_STREAM("Parameter " << lidar_tform_name
+    // if odom to lidar transform hasn't been loaded
+    if (!T_o_l_.count(lidar_id)) {
+      // add inital transform
+      XmlRpc::XmlRpcValue T_o_l_xml;
+      Transform T_o_l;
+
+      std::string lidar_tform_name =
+          std::string("T_O_L") + std::to_string(lidar_id);
+
+      if (nh_private_.getParam(lidar_tform_name, T_o_l_xml)) {
+        kindr::minimal::xmlRpcToKindr(T_o_l_xml, &T_o_l);
+      } else {
+        ROS_WARN_STREAM("Parameter " << lidar_tform_name
                                      << " not found, using identity tform");
+      }
+      T_o_l_[lidar_id] = T_o_l;
     }
-    tforms_[lidar_id] = T_odom_lidar;
   }
 }
 
-bool LidarAligner::hasAtleastNScans(size_t n) const{
-
-  if(lidar_data_.size() == 0){
+bool LidarAligner::hasAtleastNScans(size_t n) const {
+  if (lidar_data_.size() == 0) {
     return false;
   }
-  for (const std::pair<const int, std::vector<pcl::PointCloud<pcl::PointXYZI>>>&
-           lidar_scans :
+  for (const std::pair<const int, std::vector<Pointcloud>>& lidar_scans :
        lidar_data_) {
     if (n > lidar_scans.second.size()) {
       return false;
@@ -201,20 +321,35 @@ bool LidarAligner::hasAtleastNScans(size_t n) const{
   return true;
 }
 
-size_t LidarAligner::getNumFrames(int lidar_id) const{
+size_t LidarAligner::getNumScans(LidarId lidar_id) const {
   return lidar_data_.at(lidar_id).size();
 }
 
-std::vector<int> LidarAligner::getLidarIds() const{
-  std::vector<int> lidar_ids;
-  for (const std::pair<const int, std::vector<pcl::PointCloud<pcl::PointXYZI>>>&
-           lidar_scans :
+size_t LidarAligner::getNumLidars() const { return lidar_data_.size(); }
+
+std::vector<LidarAligner::LidarId> LidarAligner::getLidarIds() const {
+  std::vector<LidarId> lidar_ids;
+  for (const std::pair<const int, std::vector<Pointcloud>>& lidar_scans :
        lidar_data_) {
     lidar_ids.push_back(lidar_scans.first);
   }
   return lidar_ids;
 }
 
-kindr::minimal::QuatTransformation LidarAligner::getTransformAB(int lidar_A_id, int lidar_B_id){
-  return tforms_[lidar_A_id].inverse() * tforms_[lidar_B_id];
+LidarAligner::Transform LidarAligner::getTransformAB(LidarId lidar_A_id,
+                                                     LidarId lidar_B_id) const {
+  return T_o_l_.at(lidar_A_id).inverse() * T_o_l_.at(lidar_B_id);
+}
+
+bool LidarAligner::getTransformAtAtp1(LidarId lidar_A_id, size_t t_idx,
+                                      Transform* T_At_Atp1) const {
+  if (lidar_data_.count(lidar_A_id) == 0) {
+    return false;
+  }
+  if (lidar_data_.at(lidar_A_id).size() < t_idx) {
+    return false;
+  }
+
+  *T_At_Atp1 = T_lt_ltp1_.at(lidar_A_id)[t_idx];
+  return true;
 }

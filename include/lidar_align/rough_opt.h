@@ -5,17 +5,11 @@
 
 class RoughOpt {
  public:
-  RoughOpt(const std::shared_ptr<const LidarAligner> lidar_aligner_ptr,
-           size_t max_frames, double inlier_ratio);
+  RoughOpt(const std::shared_ptr<const LidarAligner> lidar_aligner_ptr);
 
-  std::map<int, double> Run();
+  std::map<LidarAligner::LidarId, double> Run();
 
  private:
-  size_t max_frames_;
-  double inlier_ratio_;
-
-  static constexpr size_t iterations_ = 10;
-
   const std::shared_ptr<const LidarAligner> lidar_aligner_ptr_;
 };
 
