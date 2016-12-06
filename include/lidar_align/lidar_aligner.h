@@ -44,6 +44,10 @@ class LidarAligner {
 
   void addLidarScan(const Pointcloud& pointcloud, const LidarId lidar_id);
 
+  void addOdomReading(const pcl::uint64_t timestamp,
+                      const double linear_velocity,
+                      const double angular_velocity);
+
   Scalar getErrorBetweenTimesteps(const Transform T_At_Atp1, LidarId lidar_A_id,
                                   size_t t_idx, Scalar inlier_ratio) const;
 
@@ -61,14 +65,6 @@ class LidarAligner {
   Scalar getErrorBetweenOverlappingLidars(Scalar inlier_ratio,
                                           Scalar min_overlap) const;
 
-  bool hasAtleastNScans(size_t n) const;
-
-  std::vector<LidarId> getLidarIds() const;
-
-  size_t getNumScans(LidarId lidar_id) const;
-
-  size_t getNumLidars() const;
-
   void updateTformMapFromVec(const std::vector<Scalar>& vec,
                              const bool skip_first = false);
 
@@ -81,6 +77,10 @@ class LidarAligner {
 
   bool getTransformAtAtp1(LidarId lidar_A_id, size_t t_idx,
                           Transform* T_At_Atp1) const;
+
+  Transform getOdomTransform(const pcl::uint64_t timestamp) const;
+
+  void syncOdom() const;
 
   double getSensorOverlap(LidarId lidar_A_id, LidarId lidar_B_id) const;
 
@@ -102,11 +102,18 @@ class LidarAligner {
   static constexpr Scalar kDefaultMinDistanceFilter = 2;
   Scalar min_distance_filter_;
 
+  // input lidar data
   std::map<LidarId, std::vector<Pointcloud>> lidar_data_;
-  std::map<LidarId, Transform> T_o_l_;  // odom to lidar transform
-  std::map<LidarId, std::vector<Transform>>
-      T_lt_ltp1_;  // lidar to same lidar at next timestep transform
+  // odom to lidar transform
+  std::map<LidarId, Transform> T_o_l_;
+  // lidar to same lidar at next timestep transform
+  std::map<LidarId, std::vector<Transform>> T_lt_ltp1_;
+  // odom transform from first odom reading to current one
+  std::vector<std::pair<pcl::uint64_t, Transform>> T_o0_ot_;
+  // time-synced lidar data (TODO)
   // std::map<LidarId, std::vector<Pointcloud>> lidar_data_sync_;
+  // time-synced odom data
+  std::map<LidarId, std::vector<Transform>> odom_data_sync_;
 
   ros::NodeHandle nh_;
   ros::NodeHandle nh_private_;

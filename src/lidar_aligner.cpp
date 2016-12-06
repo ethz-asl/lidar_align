@@ -73,9 +73,9 @@ LidarAligner::Transform LidarAligner::getICPTransformBetweenTimesteps(
   return T_At_Atp1;
 }
 
-LidarAligner::Transform LidarAligner::getICPTransformBetweenLidars(const LidarId lidar_A_id,
-    const LidarId lidar_B_id, const Scalar inlier_saftey_margin,
-    const size_t iterations) const {
+LidarAligner::Transform LidarAligner::getICPTransformBetweenLidars(
+    const LidarId lidar_A_id, const LidarId lidar_B_id,
+    const Scalar inlier_saftey_margin, const size_t iterations) const {
   MultiICP micp;
   Transform T_A_B = getTransformAB(lidar_A_id, lidar_B_id);
 
@@ -148,8 +148,7 @@ double LidarAligner::getSensorOverlap(const LidarId lidar_A_id,
   Scalar angle = T_o_l_.at(lidar_A_id)
                      .getRotation()
                      .getDisparityAngle(T_o_l_.at(lidar_B_id).getRotation());
-  double lidar_beam_angle =
-      3;  // TODO should be calculated from input data
+  double lidar_beam_angle = 3;  // TODO should be calculated from input data
   return (lidar_beam_angle - std::abs(angle)) / lidar_beam_angle;
 }
 
@@ -246,17 +245,6 @@ LidarAligner::Scalar LidarAligner::getErrorBetweenOverlappingLidars(
   return total_err;
 }
 
-void LidarAligner::filterPointcloud(const Pointcloud& in, Pointcloud* out) {
-  out->clear();
-  for (pcl::PointXYZI point : in) {
-    float sq_dist = point.x * point.x + point.y * point.y + point.z * point.z;
-    if (std::isfinite(sq_dist) &&
-        (sq_dist > (min_distance_filter_ * min_distance_filter_)) && (sq_dist < (100 * 100))) {
-      out->push_back(point);
-    }
-  }
-}
-
 void LidarAligner::addLidarScan(const Pointcloud& pointcloud,
                                 const std::string& lidar_topic) {
   // ugly hack that I will probably regret later
@@ -307,39 +295,58 @@ void LidarAligner::addLidarScan(const Pointcloud& pointcloud,
   }
 }
 
-bool LidarAligner::hasAtleastNScans(size_t n) const {
-  if (lidar_data_.size() == 0) {
-    return false;
-  }
-  for (const std::pair<const int, std::vector<Pointcloud>>& lidar_scans :
-       lidar_data_) {
-    if (n > lidar_scans.second.size()) {
-      return false;
-    }
+void LidarAligner::addOdomReading(const pcl::uint64_t timestamp,
+                                  const double linear_velocity,
+                                  const double angular_velocity) {
+  if (T_o0_ot_.empty()) {
+    T_o0_ot_.push_back(
+        std::make_pair(timestamp, kindr::minimal::QuatTransformation()));
+    return;
   }
 
-  return true;
+  double tdiff = (T_o0_ot_.back().first - timestamp) / 1000000.0;
+
+  if (tdiff <= 0) {
+    ROS_ERROR("New odom message is older then previous one, rejecting");
+    return;
+  }
+
+  kindr::minimal::QuatTransformation T(
+      kindr::minimal::RotationQuaternion(
+          kindr::minimal::AngleAxis(tdiff * angular_velocity, 0.0, 0.0, 1.0)),
+      kindr::minimal::Position(tdiff * linear_velocity, 0, 0));
+
+  T_o0_ot_.push_back(std::make_pair(timestamp, T_o0_ot_.back().second * T));
 }
 
-size_t LidarAligner::getNumScans(LidarId lidar_id) const {
-  return lidar_data_.at(lidar_id).size();
-}
-
-size_t LidarAligner::getNumLidars() const { return lidar_data_.size(); }
-
-std::vector<LidarAligner::LidarId> LidarAligner::getLidarIds() const {
-  std::vector<LidarId> lidar_ids;
-  for (const std::pair<const int, std::vector<Pointcloud>>& lidar_scans :
-       lidar_data_) {
-    lidar_ids.push_back(lidar_scans.first);
+LidarAligner::Transform LidarAligner::getOdomTransform(
+    const pcl::uint64_t timestamp) const {
+  size_t idx = 0;
+  while ((idx < T_o0_ot_.size()) && (timestamp > T_o0_ot_[idx].first)) {
+    ++idx;
   }
-  return lidar_ids;
+  if (idx > 0) {
+    --idx;
+  }
+
+  // interpolate
+  double t_diff_ratio =
+      static_cast<double>(timestamp - T_o0_ot_[idx].first) /
+      static_cast<double>(T_o0_ot_[idx + 1].first - T_o0_ot_[idx].first);
+
+  Transform::Vector6 diff_vector =
+      (T_o0_ot_[idx].second.inverse() * T_o0_ot_[idx + 1].second).log();
+  return T_o0_ot_[idx].second * Transform::exp(t_diff_ratio * diff_vector);
 }
 
 LidarAligner::Transform LidarAligner::getTransformAB(LidarId lidar_A_id,
                                                      LidarId lidar_B_id) const {
   return T_o_l_.at(lidar_A_id).inverse() * T_o_l_.at(lidar_B_id);
 }
+
+void LidarAligner::syncOdom(){
+  odom_data_sync.clear();
+  }
 
 bool LidarAligner::getTransformAtAtp1(LidarId lidar_A_id, size_t t_idx,
                                       Transform* T_At_Atp1) const {

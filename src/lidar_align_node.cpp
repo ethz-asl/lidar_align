@@ -12,6 +12,19 @@ static constexpr double kDefaultMinOverlap = 0.4;
 
 static constexpr double kDefaultOverlapSafteyMargin = 0.5;
 
+//this entire function is an ugly hack that needs deleting 
+LidarId topicToLidarId(const std::string& topic_name){
+  if (lidar_topic.find("lower") == std::string::npos) {
+    return;
+  }
+
+  std::string topic_start = "lidar_";
+
+  return std::strtol(
+      &lidar_topic[lidar_topic.find(topic_start) + topic_start.size()], nullptr,
+      10);
+}
+
 int main(int argc, char** argv) {
   ros::init(argc, argv, "lidar_align");
 
