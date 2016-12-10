@@ -1,8 +1,15 @@
-#include "lidar_align/lidars.h"
+#include "lidar_align/sensors.h"
 
-Odom::addRawOdomData(const Timestamp& timestamp_us,
-                     const Scalar& linear_velocity,
-                     const Scalar& angular_velocity) {
+OdomTformData::OdomTformData(Timestamp timestamp_us, Transform T_o0_ot)
+    : timestamp_us_(timestamp_us), T_o0_ot_(T_o0_ot) {}
+
+const Transform& OdomTformData::getTransform() const { return T_o0_ot_; }
+
+const Timestamp& OdomTformData::getTimestamp() const { return timestamp_us_; }
+
+void Odom::addRawOdomData(const Timestamp& timestamp_us,
+                          const Scalar& linear_velocity,
+                          const Scalar& angular_velocity) {
   static Scalar prev_linear_velocity;
   static Scalar prev_angular_velocity;
   static Timestamp prev_timestamp_us;
@@ -22,13 +29,13 @@ Odom::addRawOdomData(const Timestamp& timestamp_us,
           "New odom reading occured earlier then previous reading");
     }
 
-    Transform T(
+    T = Transform(
         kindr::minimal::RotationQuaternion(kindr::minimal::AngleAxis(
-            tdiff * average_angular_velocity, 0.0, 0.0, 1.0)),
-        kindr::minimal::Position(tdiff * average_linear_velocity, 0, 0));
+            time_diff * average_angular_velocity, 0.0, 0.0, 1.0)),
+        kindr::minimal::Position(time_diff * average_linear_velocity, 0, 0));
   }
 
-  data_.push_back(timestamp_us, T);
+  data_.emplace_back(timestamp_us, T);
 
   prev_linear_velocity = linear_velocity;
   prev_angular_velocity = angular_velocity;
@@ -37,9 +44,10 @@ Odom::addRawOdomData(const Timestamp& timestamp_us,
 
 Transform Odom::getOdomTransform(const Timestamp timestamp_us,
                                  const size_t start_idx,
-                                 size_t& match_idx) const {
+                                 size_t* match_idx) const {
   size_t idx = start_idx;
-  while ((idx < data_.size()) && (timestamp_us > data_[idx].timestamp_us)) {
+
+  while ((idx < data_.size()) && (timestamp_us > data_[idx].getTimestamp())) {
     ++idx;
   }
   if (idx > 0) {
@@ -52,89 +60,57 @@ Transform Odom::getOdomTransform(const Timestamp timestamp_us,
 
   // interpolate
   double t_diff_ratio =
-      static_cast<double>(timestamp_us - data_[idx].timestamp_us) /
-      static_cast<double>(data_[idx + 1].timestamp_us -
-                          data_[idx].timestamp_us);
+      static_cast<double>(timestamp_us - data_[idx].getTimestamp()) /
+      static_cast<double>(data_[idx + 1].getTimestamp() -
+                          data_[idx].getTimestamp());
 
   Transform::Vector6 diff_vector =
-      (data_[idx].T_o0_ot_.inverse() * data_[idx + 1].T_o0_ot_).log();
-  return data[idx].T_o0_ot_ * Transform::exp(t_diff_ratio * diff_vector);
+      (data_[idx].getTransform().inverse() * data_[idx + 1].getTransform())
+          .log();
+  return data_[idx].getTransform() * Transform::exp(t_diff_ratio * diff_vector);
 }
 
-Odom::OdomTformData::OdomTformData(Timestamp timestamp_us, Transform T_o0_ot)
-    : timestamp_us_(timestamp_us), T_o0_ot_(T_o0_ot) {}
+Scan::Scan(const Pointcloud& in)
+    : timestamp_us_(in.header.stamp),
+      raw_points_(in),
+      odom_transform_set_(false),
+      lidar_transform_set_(false){};
 
-Lidars::addLidar(const std::string& name) {
-  if (lidar_map.count(name) != 0) {
-    throw std::runtime_error("Lidar already exists cannot recreate");
-  }
-  lidar_map[name] = Lidar(name, kMinPointDist, kMaxPointDist);
+void Scan::setOdomTransform(const Odom& odom, const size_t start_idx,
+                            size_t* match_idx) {
+  T_o0_ot_ = odom.getOdomTransform(timestamp_us_, start_idx, match_idx);
+  odom_transform_set_ = true;
 }
 
-Lidars::addPointcloud(const std::string& lidar_name,
-                      const pcl::Pointcloud& pointcloud) {
-  lidar_map_.at(lidar_name).addPointcloud(pointcloud);
+void Scan::setLidarTransform(const Transform& T_o0_ot) {
+  T_o0_ot_ = T_o0_ot;
+  lidar_transform_set_ = true;
 }
 
-/*
-size_t Lidars::getNumScans(LidarId lidar_id) const {
-  return lidar_data_.at(lidar_id).getNumScans();
-}
+const Pointcloud& Scan::getRawPointcloud() const { return raw_points_; }
 
-size_t Lidars::getNumLidars() const { return lidar_map_.size(); }
+const Transform& Scan::getOdomTransform() const { return T_o0_ot_; }
 
-std::vector<LidarId> Lidars::getLidarIds() const {
-  std::vector<LidarId> lidar_ids;
-  for (const std::pair<LidarId, std::vector<Pointcloud>>& lidar : lidar_map_) {
-    lidar_ids.push_back(lidar.getId());
-  }
-  return lidar_ids;
-}
-*/
-
-bool Lidars::hasAtleastNScans(const size_t n) const{
-  for(const std::pair<LidarId, Lidar> lidar: lidar_map_){
-    if(n < lidar.second.getNumberofScans()){
-      return false;
-    }
-  }
-  return true;
-  }
-}
-
-Lidars::addPointcloud(const LidarId& lidar_id, const Pointcloud& pointcloud){
-  lidar_map_[lidar_id_].addPointcloud(pointcloud);
-}
-
-const Lidar& Lidars::getLidar(const Lidarid& lidar_id) const{
-  return lidar_map_.at(lidar_id);
-}
-
-LidarAligner::Transform LidarAligner::getTransformAB(LidarId lidar_A_id,
-                                                     LidarId lidar_B_id) const {
-  return T_o_l_.at(lidar_A_id).inverse() * T_o_l_.at(lidar_B_id);
-}
-
-Lidar::Lidar(const std::string& lidar_name, const double min_point_dist,
+Lidar::Lidar(const LidarId& lidar_id, const double min_point_dist,
              const double max_point_dist)
-    : lidar_name_(lidar_name),
+    : lidar_id_(lidar_id),
       max_point_dist_(max_point_dist),
       min_point_dist_(min_point_dist){};
 
-size_t Lidar::getNumberofScans() const { return scans_.size(); }
+size_t Lidar::getNumberOfScans() const { return scans_.size(); }
 
-const Scan& Lidar::getScan(size_t idx) const{
-  if(idx >= scans_.size()){
-    throw runtime_error("Attempted to access a scan that does not exist");
+const Scan& Lidar::getScan(size_t idx) const {
+  if (idx >= scans_.size()) {
+    throw std::runtime_error("Scan index is out of bounds");
   }
   return scans_[idx];
 }
 
 LidarId Lidar::getId() const { return lidar_id_; }
 
-void Lidar::filterPointcloud(const pcl::Pointcloud& in, pcl::Pointcloud* out) {
+void Lidar::filterPointcloud(const Pointcloud& in, Pointcloud* out) {
   out->clear();
-  for (pcl::PointXYZI point : in) {
+  for (Point point : in) {
     float sq_dist = point.x * point.x + point.y * point.y + point.z * point.z;
     if (std::isfinite(sq_dist) &&
         (sq_dist > (min_point_dist_ * min_point_dist_)) &&
@@ -145,42 +121,51 @@ void Lidar::filterPointcloud(const pcl::Pointcloud& in, pcl::Pointcloud* out) {
 }
 
 void Lidar::addPointcloud(const Pointcloud& pointcloud) {
-  pcl::Pointcloud<pcl::PointXYZI> pointcloud_filtered;
-  filterPointcloud(pointcloud, pointcloud_filtered);
-  scans_.addScan(pointcloud_filtered);
+  Pointcloud pointcloud_filtered;
+  filterPointcloud(pointcloud, &pointcloud_filtered);
+  scans_.push_back(pointcloud_filtered);
 }
 
-void Lidar::setOdomTransforms(const Odom& odom) {
+void Lidar::setOdomOdomTransforms(const Odom& odom) {
   size_t idx = 0;
   for (Scan& scan : scans_) {
     scan.setOdomTransform(odom, idx, &idx);
   }
 }
 
-void Lidar::setLidarTransforms(const Aligner& aligner){
+void Lidar::setLidarLidarTransform(const Transform& T, const size_t& scan_idx) {
+  scans_[scan_idx].setLidarTransform(T);
+}
 
-  Transform T;
-  scans_[0].setLidarTransform(T);
-  for(size_t idx = 1; idx < scans_.size(); ++idx){
-    T = T * aligner.ScanScanICPTransform(scans_[idx-1], scans_[idx]);
-    scans_[idx].setLidarTransform(T);
+void Lidar::setOdomLidarTransform(const Transform& T_o_l){
+  T_o_l_ = T_o_l;
+}
+
+const Transform& Lidar::getOdomLidarTransform() const { return T_o_l_; }
+
+bool Lidars::hasAtleastNScans(const size_t n) const {
+  if (lidar_vector_.empty()) {
+    return false;
   }
+  for (const Lidar lidar : lidar_vector_) {
+    if (n > lidar.getNumberOfScans()) {
+      return false;
+    }
+  }
+  return true;
 }
 
-Scan::Scan(const Pointcloud& in)
-    : timestamp_us_(in.header.stamp), raw_points_(in), odom_transform_set_(false), lidar_transform_set_(false){};
-
-void Scan::setOdomTransform(const Odom& odom, const size_t start_idx,
-                       const size_t& match_idx) {
-  T_o0_ot_ = odom.getOdomTransform(timestamp_us_, start_idx, match_idx);
-  odom_transform_set_ = true;
+void Lidars::addPointcloud(const LidarId& lidar_id,
+                           const Pointcloud& pointcloud) {
+  if (id_to_idx_map_.count(lidar_id) == 0) {
+    lidar_vector_.emplace_back(lidar_id, 1.0, 100.0);
+    id_to_idx_map_[lidar_id] = lidar_vector_.size()-1;
+  }
+  lidar_vector_[id_to_idx_map_.at(lidar_id)].addPointcloud(pointcloud);
 }
 
-void Scan::setLidarTransform(const Transform& T_o0_ot){
-  T_o0_ot_ = T_o0_ot;
-  lidar_transform_set_ = true;
+const Lidar& Lidars::getLidar(const LidarId& lidar_id) const {
+  return lidar_vector_[id_to_idx_map_.at(lidar_id)];
 }
 
-const Pointcloud<Point>& getRawPointcloud() const{
-  return raw_points_;
-}
+std::vector<Lidar>& Lidars::getLidarsRef() { return lidar_vector_; }

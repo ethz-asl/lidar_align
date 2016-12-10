@@ -1,14 +1,33 @@
-#ifndef LIDAR_ALIGN_LIDARS_H_
-#define LIDAR_ALIGN_LIDARS_H_
+#ifndef LIDAR_ALIGN_SENSORS_H_
+#define LIDAR_ALIGN_SENSORS_H_
+
+#include <pcl/common/transforms.h>
+#include <pcl/io/ply_io.h>
+#include <pcl/kdtree/kdtree_flann.h>
+#include <pcl_conversions/pcl_conversions.h>
+
+#include <kindr/minimal/quat-transformation.h>
 
 typedef int LidarId;
-typedef Scalar Scalar;
+typedef double Scalar;
 // this must be at least 64 bit and signed or things will break
 typedef long long int Timestamp;
 
 typedef kindr::minimal::QuatTransformationTemplate<Scalar> Transform;
 typedef pcl::PointXYZI Point;
 typedef pcl::PointCloud<Point> Pointcloud;
+
+class OdomTformData {
+ public:
+  OdomTformData(Timestamp timestamp_us, Transform T_o0_ot);
+
+  const Transform& getTransform() const;
+  const Timestamp& getTimestamp() const;
+
+ private:
+  Transform T_o0_ot_;
+  Timestamp timestamp_us_;
+};
 
 class Odom {
  public:
@@ -18,49 +37,57 @@ class Odom {
 
   Transform getOdomTransform(const Timestamp timestamp_us,
                              const size_t start_idx = 0,
-                             size_t& match_idx = nullptr) const;
+                             size_t* match_idx = nullptr) const;
 
  private:
-  struct OdomTformData {
-    OdomTformData(timestamp_us, T_o0_ot)
-        : timestamp_us_(timestamp_us), T_o0_ot_(T_o0_ot){};
-    Transform T_o0_ot_;
-    Timestamp timestamp_us_;
-  }
+  std::vector<OdomTformData> data_;
+};
 
-  std::vector<OdomTformData>
-      data_;
-
-}
-
-class Lidars {
+class Scan {
  public:
+  Scan(const Pointcloud& pointcloud);
 
-  void addPointcloud(const LidarId& lidar_id, const Pointcloud& pointcloud);
+  void setOdomTransform(const Odom& odom, const size_t start_idx,
+                        size_t* match_idx);
 
-  const Lidar& getLidar(const Lidarid& lidar_id) const;
+  void setLidarTransform(const Transform& T_o0_ot);
 
-  bool hasAtleastNScans(const size_t n) const;
+  const Transform& getOdomTransform() const;
+
+  const Pointcloud& getRawPointcloud() const;
 
  private:
-  std::map<LidarId, Lidar> lidar_map_;
+  Timestamp timestamp_us_;  // signed to allow simpler comparisons
+  Pointcloud raw_points_;
+  Pointcloud synced_points_;
+  Transform T_l0_lt_;  // absolute lidar transform at this timestamp
+  Transform T_o0_ot_;  // absolute odom transform at this timestamp
 
-  static constexpr Scalar kMinPointDist = 1.0;
-  static constexpr Scalar kMaxPointDist = 100.0;
-}
+  bool synced_;
+  bool odom_transform_set_;
+  bool lidar_transform_set_;
+};
 
 class Lidar {
  public:
-  Lidar(const LidarId& id, const Scalar max_point_dist,
-        const Scalar min_point_dist);
+  Lidar(const LidarId& lidar_id, const Scalar min_point_dist,
+        const Scalar max_point_dist);
 
   size_t getNumberOfScans() const;
+
+  LidarId getId() const;
 
   const Scan& getScan(size_t idx) const;
 
   void addPointcloud(const Pointcloud& pointcloud);
 
-  void setOdomTransforms(const Odom& odom);
+  void setOdomOdomTransforms(const Odom& odom);
+
+  void setLidarLidarTransform(const Transform& T, const size_t& scan_idx);
+
+  void setOdomLidarTransform(const Transform& T_o_l);
+
+  const Transform& getOdomLidarTransform() const;
 
  private:
   LidarId lidar_id_;
@@ -72,28 +99,26 @@ class Lidar {
   Scalar min_point_dist_;
 
   void filterPointcloud(const Pointcloud& in, Pointcloud* out);
+};
 
-}
-
-class Scan {
+class Lidars {
  public:
-  Scan(const Pointcloud& pointcloud);
+  void addPointcloud(const LidarId& lidar_id, const Pointcloud& pointcloud);
 
-  void setOdomTransform(const Odom& odom, const size_t start_idx,
-                        const size_t& match_idx);
+  const Lidar& getLidar(const LidarId& lidar_id) const;
 
-  const Pointcloud<Point>& getRawPointcloud() const;
+  std::vector<Lidar>& getLidarsRef();
+
+  bool hasAtleastNScans(const size_t n) const;
 
  private:
-  Timestamp timestamp_us_;  // signed to allow simpler comparisons
-  Pointcloud<Point> raw_points_;
-  Pointcloud<Point> synced_points_;
-  Transform T_l0_lt_;  // absolute lidar transform at this timestamp
-  Transform T_o0_ot_;  // absolute odom transform at this timestamp
+  // while it is nice to refer to lidars by id, we often just need a vector of
+  // them (thus why the lidars are not in the map directly)
+  std::map<LidarId, size_t> id_to_idx_map_;
+  std::vector<Lidar> lidar_vector_;
 
-  bool synced_;
-  bool odom_transform_set_;
-  bool lidar_transform_set_;
-}
+  //static constexpr Scalar kMinPointDist = 1.0;
+  //static constexpr Scalar kMaxPointDist = 100.0;
+};
 
 #endif

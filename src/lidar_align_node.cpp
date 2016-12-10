@@ -1,28 +1,26 @@
-#include "lidar_align/lidar_aligner.h"
-#include "lidar_align/rough_opt.h"
-#include "lidar_align/t_grid.h"
+#include <ros/ros.h>
+#include <rosbag/bag.h>
+#include <rosbag/view.h>
+#include <geometry_msgs/TwistStamped.h>
+
+#include "lidar_align/aligner.h"
+#include "lidar_align/sensors.h"
 
 // number of frames to take when calculating rough 2D alignment
-static constexpr int kDefaultUseNScans = 1000;
+constexpr int kDefaultUseNScans = 100;
 
-// place sensors this distance from origin as inital guess
-static constexpr double kDefaultInitalLidarDistFromOrigin = 0;
-
-static constexpr double kDefaultMinOverlap = 0.4;
-
-static constexpr double kDefaultOverlapSafteyMargin = 0.5;
-
-//this entire function is an ugly hack that needs deleting 
-LidarId topicToLidarId(const std::string& topic_name){
-  if (lidar_topic.find("lower") == std::string::npos) {
-    return;
+// this entire function is an ugly hack that needs deleting
+bool topicToLidarId(const std::string& topic_name, LidarId* lidar_id) {
+  if (topic_name.find("lower") == std::string::npos) {
+    return false;
   }
 
   std::string topic_start = "lidar_";
 
-  return std::strtol(
-      &lidar_topic[lidar_topic.find(topic_start) + topic_start.size()], nullptr,
+  *lidar_id = std::strtol(
+      &topic_name[topic_name.find(topic_start) + topic_start.size()], nullptr,
       10);
+  return true;
 }
 
 int main(int argc, char** argv) {
@@ -39,85 +37,64 @@ int main(int argc, char** argv) {
   int use_n_scans;
   nh_private.param("use_n_scans", use_n_scans, kDefaultUseNScans);
 
-  std::shared_ptr<LidarAligner> lidar_aligner_ptr(
-      new LidarAligner(nh, nh_private));
-
   rosbag::Bag bag;
   bag.open(input_bag_path, rosbag::bagmode::Read);
 
-  rosbag::View view(bag, rosbag::TypeQuery("sensor_msgs/PointCloud2"));
+  std::vector<std::string> types;
+  types.push_back(std::string("sensor_msgs/PointCloud2"));
+  types.push_back(std::string("geometry_msgs/TwistStamped"));
+  rosbag::View view(bag, rosbag::TypeQuery(types));
 
-  ROS_INFO("Loading scans...");
+  ROS_INFO("Loading data...");
+
+  Lidars lidars;
+  Odom odom;
 
   for (const rosbag::MessageInstance& m : view) {
-    pcl::PointCloud<pcl::PointXYZI> pointcloud;
-    pcl::fromROSMsg(*(m.instantiate<sensor_msgs::PointCloud2>()), pointcloud);
+    if (m.getDataType() == std::string("sensor_msgs/PointCloud2")) {
+      pcl::PointCloud<pcl::PointXYZI> pointcloud;
+      pcl::fromROSMsg(*(m.instantiate<sensor_msgs::PointCloud2>()), pointcloud);
 
-    lidar_aligner_ptr->addLidarScan(pointcloud, m.getTopic());
-
-    if (lidar_aligner_ptr->hasAtleastNScans(use_n_scans)) {
-      break;
-    }
-  }
-
-  ROS_INFO("Finding inital alignment guess...");
-
-  // get angles
-  RoughOpt rough_opt(lidar_aligner_ptr);
-  std::map<LidarAligner::LidarId, double> rough_angles = rough_opt.Run();
-
-  // build inital guess from angle
-  double inital_lidar_dist_from_origin;
-  nh_private.param("inital_lidar_dist_from_origin",
-                   inital_lidar_dist_from_origin,
-                   kDefaultInitalLidarDistFromOrigin);
-  for (const std::pair<LidarAligner::LidarId, double>& angle : rough_angles) {
-
-    // creates a tform rotated by angle found in the rough alignment stage and a
-    // fixed distance from the origin in the direction the sensor is facing
-    kindr::minimal::QuatTransformation T_l_o(
-        kindr::minimal::RotationQuaternion(
-            kindr::minimal::AngleAxis(angle.second, 0.0, 0.0, 1.0)),
-        kindr::minimal::Position(
-            inital_lidar_dist_from_origin * std::cos(angle.second),
-            inital_lidar_dist_from_origin * std::sin(angle.second), 0));
-
-    lidar_aligner_ptr->setTform(T_l_o, angle.first);
-  }
-
-  ROS_INFO("Refining alignment...");
-
-  double min_overlap;
-  nh_private.param("min_overlap", min_overlap, kDefaultMinOverlap);
-  double overlap_saftey_margin;
-  nh_private.param("overlap_saftey_margin", overlap_saftey_margin,
-                   kDefaultOverlapSafteyMargin);
-
-  std::vector<LidarAligner::LidarId> lidar_ids =
-      lidar_aligner_ptr->getLidarIds();
-
-  TGrid T_grid(lidar_ids.size());
-
-  for (size_t i = 0; i < lidar_ids.size(); ++i) {
-    for (size_t j = i; j < lidar_ids.size(); ++j) {
-      if (i == j) {
-        continue;
+      LidarId lidar_id;
+      if (topicToLidarId(m.getTopic(), &lidar_id)) {
+        lidars.addPointcloud(lidar_id, pointcloud);
       }
 
-      float overlap = lidar_aligner_ptr->getSensorOverlap(lidar_ids[i], lidar_ids[j]);
-      ROS_ERROR_STREAM("overlap: " << overlap);
-      if (overlap > min_overlap) {
-        LidarAligner::Transform T_A_B = lidar_aligner_ptr->getICPTransformBetweenLidars(
-            lidar_ids[i], lidar_ids[j], overlap_saftey_margin, 20);
-        ROS_ERROR_STREAM(" " << i << " " << j << "\n" << T_A_B);
-        T_grid.set(i, j, T_A_B, overlap - overlap_saftey_margin);
+      if (lidars.hasAtleastNScans(use_n_scans)) {
+        break;
       }
+    } else if (m.getDataType() == std::string("geometry_msgs/TwistStamped")) {
+      geometry_msgs::TwistStamped twist_msg =
+          *(m.instantiate<geometry_msgs::TwistStamped>());
+      odom.addRawOdomData((twist_msg.header.stamp.toSec() * 1000000),
+                          twist_msg.twist.linear.x, twist_msg.twist.angular.z);
     }
   }
+  ROS_INFO("Loading finished");
 
-  //T_grid.makeConsistent();
+  ROS_INFO("Interpolating odom data");
+  std::vector<Lidar> lidar_vector = lidars.getLidarsRef();
+  for (Lidar& lidar : lidar_vector) {
+    lidar.setOdomOdomTransforms(odom);
+  }
 
-  // lidar_aligner_ptr->
+
+  Aligner aligner;
+
+  /*std::vector<Lidar> lidar_vector = lidars.getLidarsRef();
+  ROS_INFO("Finding lidar-lidar transforms");
+  for(Lidar& lidar : lidar_vector){
+    ROS_INFO_STREAM("Setting transforms for lidar " << lidar.getId());
+    aligner.setLidarTransforms(&lidar);
+  }*/
+
+  ROS_INFO("Finding odom-lidar transforms");
+  for (Lidar& lidar : lidar_vector) {
+    ROS_INFO_STREAM("Setting transforms for lidar " << lidar.getId());
+    std::cerr << aligner.lidarOdomCPError(lidar) << std::endl;
+    aligner.lidarOdomCPTransform(&lidar);
+    break;
+  }
 
   return 0;
 }
