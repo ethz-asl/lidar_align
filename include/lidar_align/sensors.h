@@ -87,6 +87,9 @@ class Lidar {
 
   void setOdomLidarTransform(const Transform& T_o_l);
 
+  //used for debugging frames
+  void saveCombinedPointcloud(const std::string& file_path);
+
   const Transform& getOdomLidarTransform() const;
 
  private:

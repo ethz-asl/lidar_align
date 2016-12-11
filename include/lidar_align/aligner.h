@@ -17,16 +17,26 @@ class Aligner {
 
   Scalar lidarOdomCPError(const Lidar& lidar) const;
 
+  Scalar lidarOdomProjGridError(const Lidar& lidar) const;
+
   void lidarOdomCPTransform(Lidar* lidar_ptr);
+
+  void lidarOdomProjGridTransform(Lidar* lidar_ptr);
+
+  static Transform rawVec6ToTransform(const double* vec6);
+
+  static Transform rawVec5ToTransform(const double* vec5);
+
+  static Transform rawVec3ToTransform(const double* vec3);
 
  private:
   struct Config {
     // set default values
     Config() {
       icp_iterations = 30;
-      icp_inlier_ratio = 1.0;
-      cp_inlier_ratio = 1.0;
-      lidar_odom_cp_inlier_ratio = 1.0;
+      icp_inlier_ratio = 0.8;
+      cp_inlier_ratio = 0.8;
+      lidar_odom_cp_inlier_ratio = 0.8;
     };
 
     size_t icp_iterations;
@@ -39,6 +49,17 @@ class Aligner {
   class LidarOdomCPMinimizer {
    public:
     LidarOdomCPMinimizer(const Aligner* aligner, Lidar* lidar_ptr);
+
+    bool operator()(const Scalar* const tform_vec_raw, Scalar* residual) const;
+
+   private:
+    Lidar* lidar_ptr_;
+    const Aligner* aligner_ptr_;
+  };
+
+  class LidarOdomProjGridMinimizer {
+   public:
+    LidarOdomProjGridMinimizer(const Aligner* aligner, Lidar* lidar_ptr);
 
     bool operator()(const Scalar* const tform_vec_raw, Scalar* residual) const;
 
