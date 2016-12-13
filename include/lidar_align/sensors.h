@@ -56,12 +56,14 @@ class Scan {
 
   const Pointcloud& getRawPointcloud() const;
 
+  Pointcloud getTimeAlignedPointcloud(const Transform& T_o_l) const;
+
  private:
   Timestamp timestamp_us_;  // signed to allow simpler comparisons
   Pointcloud raw_points_;
-  Pointcloud synced_points_;
   Transform T_l0_lt_;  // absolute lidar transform at this timestamp
-  Transform T_o0_ot_;  // absolute odom transform at this timestamp
+  std::vector<Transform>
+      T_o0_ot_;  // absolute odom transform to each point in pointcloud
 
   bool synced_;
   bool odom_transform_set_;
@@ -87,7 +89,7 @@ class Lidar {
 
   void setOdomLidarTransform(const Transform& T_o_l);
 
-  //used for debugging frames
+  // used for debugging frames
   void saveCombinedPointcloud(const std::string& file_path);
 
   const Transform& getOdomLidarTransform() const;
@@ -120,8 +122,8 @@ class Lidars {
   std::map<LidarId, size_t> id_to_idx_map_;
   std::vector<Lidar> lidar_vector_;
 
-  //static constexpr Scalar kMinPointDist = 1.0;
-  //static constexpr Scalar kMaxPointDist = 100.0;
+  // static constexpr Scalar kMinPointDist = 1.0;
+  // static constexpr Scalar kMaxPointDist = 100.0;
 };
 
 #endif

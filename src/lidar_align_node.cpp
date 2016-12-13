@@ -7,13 +7,13 @@
 #include "lidar_align/sensors.h"
 
 // number of frames to take when calculating rough 2D alignment
-constexpr int kDefaultUseNScans = 1000;
+constexpr int kDefaultUseNScans = 100;
 
 // this entire function is an ugly hack that needs deleting
 bool topicToLidarId(const std::string& topic_name, LidarId* lidar_id) {
-  if (topic_name.find("upper") == std::string::npos) {
-    return false;
-  }
+  //if (topic_name.find("upper") == std::string::npos) {
+  //  return false;
+  //}
 
   std::string topic_start = "lidar_";
 
@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
 
       LidarId lidar_id;
       if (topicToLidarId(m.getTopic(), &lidar_id)) {
-        if(lidar_id != 5){
+        if(lidar_id != 3){
           continue;
         }
         lidars.addPointcloud(lidar_id, pointcloud);
@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
     ROS_INFO_STREAM("Setting transforms for lidar " << lidar.getId());
     //lidar.saveCombinedPointcloud("/home/z/datasets/ibeo/pc_out.ply");
     std::cerr << aligner.lidarOdomProjGridError(lidar) << std::endl;
-    aligner.lidarOdomProjGridTransform(&lidar);
+    aligner.lidarOdomTransform(&lidar);
     break;
   }
 

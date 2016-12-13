@@ -89,39 +89,36 @@ Scalar Aligner::lidarOdomCPError(const Lidar& lidar) const {
   return err;
 }
 
-Scalar Aligner::lidarOdomProjGridError(const Lidar& lidar) const{
-    std::cerr << "tf: " << lidar.getOdomLidarTransform().log().transpose()
-            << " err: ";
-
-    Scalar grid_res = 0.1;
-    std::map<std::pair<size_t, size_t>, size_t> proj_grid;
-    for (size_t idx = 0; idx < lidar.getNumberOfScans(); ++idx) {
-
-    Transform T_o_lt =
-        lidar.getScan(idx).getOdomTransform() * lidar.getOdomLidarTransform();
-
-    Pointcloud tformed_scan;
-    pcl::transformPointCloud(lidar.getScan(idx).getRawPointcloud(), tformed_scan,
-                             T_o_lt.cast<float>().getTransformationMatrix());
+Scalar Aligner::lidarOdomProjGridError(const Lidar& lidar) const {
+  Scalar grid_res = 0.1;
+  std::map<std::tuple<size_t, size_t, size_t>, size_t> proj_grid;
+  for (size_t idx = 0; idx < lidar.getNumberOfScans(); ++idx) {
+    Pointcloud tformed_scan = lidar.getScan(idx).getTimeAlignedPointcloud(
+        lidar.getOdomLidarTransform());
 
     for (Point& point : tformed_scan) {
-      std::pair<size_t, size_t> loc = std::make_pair(static_cast<size_t>(point.x / grid_res), static_cast<size_t>(point.y / grid_res));
-      if(proj_grid.count(loc) == 0){
+      std::tuple<size_t, size_t, size_t> loc =
+          std::make_tuple(static_cast<size_t>(point.x / grid_res),
+                          static_cast<size_t>(point.y / grid_res),
+                          static_cast<size_t>(point.z / grid_res));
+      if (proj_grid.count(loc) == 0) {
         proj_grid[loc] = 1;
-      }
-      else{
+      } else {
         proj_grid[loc]++;
       }
     }
   }
 
   Scalar total_error = 0;
-  for(const std::pair<std::pair<size_t, size_t>, size_t>& cell : proj_grid){
-    total_error += static_cast<Scalar>(cell.second) * std::log2(static_cast<Scalar>(cell.second));
+  for (const std::pair<std::tuple<size_t, size_t, size_t>, size_t>& cell :
+       proj_grid) {
+    total_error -= static_cast<Scalar>(cell.second) *
+                   std::log2(static_cast<Scalar>(cell.second));
   }
-  total_error = 10000000 - total_error;
-
-  std::cerr << total_error << std::endl;
+  // total_error = proj_grid.size();
+  std::cerr << "err: " << std::setw(15) << total_error
+            << "  tf: " << lidar.getOdomLidarTransform().log().transpose()
+            << std::endl;
 
   return total_error;
 }
@@ -139,7 +136,7 @@ Transform Aligner::rawVec5ToTransform(const double* vec5) {
   for (size_t i = 0; i < 6; ++i) {
     if (i < 2) {
       tf_vec[i] = vec5[i];
-    } else if (i == 3) {
+    } else if (i == 2) {
       tf_vec[i] = 0;
     } else {
       tf_vec[i] = vec5[i - 1];
@@ -159,96 +156,89 @@ Transform Aligner::rawVec3ToTransform(const double* vec3) {
       tf_vec[5] = vec3[2];
     }
   }
-  tf_vec *= 1000;
   return Transform::exp(tf_vec);
 }
 
-Aligner::LidarOdomCPMinimizer::LidarOdomCPMinimizer(const Aligner* aligner_ptr,
-                                                    Lidar* lidar_ptr)
-    : lidar_ptr_(lidar_ptr), aligner_ptr_(aligner_ptr) {}
-
-bool Aligner::LidarOdomCPMinimizer::operator()(
-    const double* const tform_vec_raw, double* residual) const {
-  Transform T = Aligner::rawVec3ToTransform(tform_vec_raw);
-  lidar_ptr_->setOdomLidarTransform(T);
-  *residual = aligner_ptr_->lidarOdomCPError(*lidar_ptr_);
-  //*residual = std::rand();
-  return true;
+Transform Aligner::vecToTransform(const std::vector<double>& vec) {
+  switch (vec.size()) {
+    case 3:
+      return rawVec3ToTransform(vec.data());
+      break;
+    case 5:
+      return rawVec5ToTransform(vec.data());
+      break;
+    case 6:
+      return rawVec6ToTransform(vec.data());
+    default:
+      throw std::runtime_error("Transform vectors must be of size 3, 5 or 6");
+  }
 }
 
-Aligner::LidarOdomProjGridMinimizer::LidarOdomProjGridMinimizer(const Aligner* aligner_ptr,
-                                                    Lidar* lidar_ptr)
-    : lidar_ptr_(lidar_ptr), aligner_ptr_(aligner_ptr) {}
+double Aligner::LidarOdomMinimizer(const std::vector<double>& x,
+                                   std::vector<double>& grad, void* f_data) {
+  std::pair<Lidar*, Aligner*> data =
+      *static_cast<std::pair<Lidar*, Aligner*>*>(f_data);
 
-bool Aligner::LidarOdomProjGridMinimizer::operator()(
-    const double* const tform_vec_raw, double* residual) const {
-  Transform T = Aligner::rawVec3ToTransform(tform_vec_raw);
-  lidar_ptr_->setOdomLidarTransform(T);
-  *residual = aligner_ptr_->lidarOdomProjGridError(*lidar_ptr_);
-  //*residual = std::rand();
-  return true;
+  if (!grad.empty()) {
+    std::cerr << "error gradient in use" << std::endl;
+  }
+
+  Transform T = Aligner::vecToTransform(x);
+  data.first->setOdomLidarTransform(T);
+  return data.second->lidarOdomProjGridError(*data.first);
+
+  if (!grad.empty()) {
+    std::cerr << "error gradient in use" << std::endl;
+  }
 }
 
-void Aligner::lidarOdomCPTransform(Lidar* lidar_ptr) {
-  Eigen::Matrix<double, 3, 1> tform_vec;
-
-  // Build the problem.
-  ceres::Problem problem;
-
-  ceres::CostFunction* cost_function =
-      new ceres::NumericDiffCostFunction<LidarOdomCPMinimizer, ceres::CENTRAL,
-                                         1, 3>(
-          new LidarOdomCPMinimizer(this, lidar_ptr));
-  problem.AddResidualBlock(cost_function, NULL, &(tform_vec[0]));
-
-  // std::cerr << aligner_ptr_->lidarOdomCPError(*lidar_ptr_) << std::endl;
+void Aligner::lidarOdomTransform(Lidar* lidar_ptr) {
+  std::pair<Lidar*, Aligner*> data = std::make_pair(lidar_ptr, this);
 
   std::cerr << "Initial transform:\n"
             << lidar_ptr->getOdomLidarTransform() << "\n";
 
-  // Run the solver!
-  ceres::Solver::Options options;
-  options.function_tolerance = 0;
-  options.parameter_tolerance = 0;
-  options.gradient_tolerance = 0;
-  options.linear_solver_type = ceres::DENSE_QR;
-  options.minimizer_progress_to_stdout = false;
-  ceres::Solver::Summary summary;
-  ceres::Solve(options, &problem, &summary);
-  std::cout << summary.BriefReport() << "\n";
+  nlopt::opt opt(nlopt::LN_NELDERMEAD, 6);
 
-  std::cerr << "Final transform:\n"
-            << lidar_ptr->getOdomLidarTransform() << "\n";
-}
+  std::vector<double> lb(6);
+  lb[0] = -6;
+  lb[1] = -6;
+  lb[2] = -1;
+  lb[3] = -0.1;
+  lb[4] = -0.1;
+  lb[5] = -3.14159;
+  opt.set_lower_bounds(lb);
 
-void Aligner::lidarOdomProjGridTransform(Lidar* lidar_ptr) {
-  Eigen::Matrix<double, 3, 1> tform_vec;
-  tform_vec[0] = 3.7/1000;
+  std::vector<double> ub(6);
+  ub[0] = 6;
+  ub[1] = 6;
+  ub[2] = 1;
+  ub[3] = 0.1;
+  ub[4] = 0.1;
+  ub[5] = 3.14159;
+  opt.set_upper_bounds(ub);
 
-  // Build the problem.
-  ceres::Problem problem;
+  opt.set_min_objective(LidarOdomMinimizer, &data);
 
-  ceres::CostFunction* cost_function =
-      new ceres::NumericDiffCostFunction<LidarOdomProjGridMinimizer, ceres::CENTRAL,
-                                         1, 3>(
-          new LidarOdomProjGridMinimizer(this, lidar_ptr));
-  problem.AddResidualBlock(cost_function, NULL, &(tform_vec[0]));
+  std::vector<double> inital_guess(6);
+  inital_guess[0] = 0;
+  inital_guess[1] = 0;
+  inital_guess[2] = 0;
+  inital_guess[3] = 0;
+  inital_guess[4] = 0;
+  inital_guess[5] = 0;
 
-  // std::cerr << aligner_ptr_->lidarOdomCPError(*lidar_ptr_) << std::endl;
+  double minf;
+  nlopt::result result = opt.optimize(inital_guess, minf);
 
-  std::cerr << "Initial transform:\n"
-            << lidar_ptr->getOdomLidarTransform() << "\n";
-
-  // Run the solver!
-  ceres::Solver::Options options;
-  options.function_tolerance = 0;
-  options.parameter_tolerance = 0;
-  options.gradient_tolerance = 0;
-  options.linear_solver_type = ceres::DENSE_QR;
-  options.minimizer_progress_to_stdout = false;
-  ceres::Solver::Summary summary;
-  ceres::Solve(options, &problem, &summary);
-  std::cout << summary.BriefReport() << "\n";
+  std::vector<double> termination_tolerance(6);
+  termination_tolerance[0] = 0.01;
+  termination_tolerance[1] = 0.01;
+  termination_tolerance[2] = 0.01;
+  termination_tolerance[3] = 0.001;
+  termination_tolerance[4] = 0.001;
+  termination_tolerance[5] = 0.001;
+  opt.set_xtol_abs(termination_tolerance);
 
   std::cerr << "Final transform:\n"
             << lidar_ptr->getOdomLidarTransform() << "\n";

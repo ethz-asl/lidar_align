@@ -1,7 +1,7 @@
 #ifndef LIDAR_ALIGN_ALIGNER_H_
 #define LIDAR_ALIGN_ALIGNER_H_
 
-#include <ceres/ceres.h>
+#include <nlopt.hpp>
 #include "lidar_align/sensors.h"
 
 class Aligner {
@@ -19,15 +19,15 @@ class Aligner {
 
   Scalar lidarOdomProjGridError(const Lidar& lidar) const;
 
-  void lidarOdomCPTransform(Lidar* lidar_ptr);
-
-  void lidarOdomProjGridTransform(Lidar* lidar_ptr);
+  void lidarOdomTransform(Lidar* lidar_ptr);
 
   static Transform rawVec6ToTransform(const double* vec6);
 
   static Transform rawVec5ToTransform(const double* vec5);
 
   static Transform rawVec3ToTransform(const double* vec3);
+
+  static Transform vecToTransform(const std::vector<double>& vec);
 
  private:
   struct Config {
@@ -46,27 +46,7 @@ class Aligner {
     Scalar lidar_odom_cp_inlier_ratio;
   };
 
-  class LidarOdomCPMinimizer {
-   public:
-    LidarOdomCPMinimizer(const Aligner* aligner, Lidar* lidar_ptr);
-
-    bool operator()(const Scalar* const tform_vec_raw, Scalar* residual) const;
-
-   private:
-    Lidar* lidar_ptr_;
-    const Aligner* aligner_ptr_;
-  };
-
-  class LidarOdomProjGridMinimizer {
-   public:
-    LidarOdomProjGridMinimizer(const Aligner* aligner, Lidar* lidar_ptr);
-
-    bool operator()(const Scalar* const tform_vec_raw, Scalar* residual) const;
-
-   private:
-    Lidar* lidar_ptr_;
-    const Aligner* aligner_ptr_;
-  };
+  static double LidarOdomMinimizer(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
 
   Scalar trimmedMeans(const std::vector<Scalar>& raw_error,
                       const Scalar& inlier_ratio) const;
