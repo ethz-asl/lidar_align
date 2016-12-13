@@ -5,6 +5,7 @@
 #include <pcl/io/ply_io.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <pcl/filters/statistical_outlier_removal.h>
 
 #include <kindr/minimal/quat-transformation.h>
 
@@ -113,6 +114,8 @@ class Lidars {
   const Lidar& getLidar(const LidarId& lidar_id) const;
 
   std::vector<Lidar>& getLidarsRef();
+
+  size_t getNumberOfLidars() const;
 
   bool hasAtleastNScans(const size_t n) const;
 

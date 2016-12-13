@@ -17,17 +17,18 @@ class Aligner {
 
   Scalar lidarOdomCPError(const Lidar& lidar) const;
 
-  Scalar lidarOdomProjGridError(const Lidar& lidar) const;
+  Scalar lidarOdomProjGridError(const Lidar& lidar, const Scalar& grid_res) const;
 
-  void lidarOdomTransform(Lidar* lidar_ptr);
+  Scalar lidarsOdomProjGridError(Lidars& lidars, const Scalar& grid_res) const;
 
-  static Transform rawVec6ToTransform(const double* vec6);
+  void lidarOdomTransform(const size_t num_params, Lidar* lidar_ptr);
 
-  static Transform rawVec5ToTransform(const double* vec5);
+  void lidarOdomJointTransform(const size_t num_params, Lidars* lidars_ptr);
 
-  static Transform rawVec3ToTransform(const double* vec3);
+  static Transform vecToTransform(const std::vector<double>& vec, const Transform& inital_T);
 
-  static Transform vecToTransform(const std::vector<double>& vec);
+  static std::vector<double> transformToVec(const Transform& T,
+                                            size_t vec_length = 6);
 
  private:
   struct Config {
@@ -46,7 +47,12 @@ class Aligner {
     Scalar lidar_odom_cp_inlier_ratio;
   };
 
-  static double LidarOdomMinimizer(const std::vector<double> &x, std::vector<double> &grad, void* f_data);
+  static double LidarOdomMinimizer(const std::vector<double>& x,
+                                   std::vector<double>& grad, void* f_data);
+
+  static double LidarOdomJointMinimizer(const std::vector<double>& x,
+                                        std::vector<double>& grad,
+                                        void* f_data);
 
   Scalar trimmedMeans(const std::vector<Scalar>& raw_error,
                       const Scalar& inlier_ratio) const;

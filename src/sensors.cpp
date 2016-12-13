@@ -87,7 +87,6 @@ void Scan::setOdomTransform(const Odom& odom, const size_t start_idx,
   for (Point point : raw_points_) {
     Timestamp point_ts_us = timestamp_us_ + ((40000.0 * i) / raw_points_.size());
     ++i;
-    std::cerr << timestamp_us_ << " " << point_ts_us << std::endl;
     T_o0_ot_.push_back(
         odom.getOdomTransform(point_ts_us, start_idx, match_idx));
   }
@@ -110,6 +109,7 @@ const Transform& Scan::getOdomTransform() const {
 
 Pointcloud Scan::getTimeAlignedPointcloud(const Transform& T_o_l) const {
   Pointcloud output_points;
+
   for (size_t i = 0; i < raw_points_.size(); ++i) {
     Transform T_o_lt = T_o0_ot_[i] * T_o_l;
 
@@ -155,6 +155,14 @@ void Lidar::filterPointcloud(const Pointcloud& in, Pointcloud* out) {
 void Lidar::addPointcloud(const Pointcloud& pointcloud) {
   Pointcloud pointcloud_filtered;
   filterPointcloud(pointcloud, &pointcloud_filtered);
+
+  pcl::StatisticalOutlierRemoval<Point> sor;
+  sor.setInputCloud (pointcloud.makeShared());
+  sor.setMeanK (10);
+  sor.setStddevMulThresh (0.7);
+  sor.filter(pointcloud_filtered);
+
+  std::cerr << pointcloud_filtered.size() << " " << pointcloud.size() << std::endl;
   scans_.push_back(pointcloud_filtered);
 }
 
@@ -201,6 +209,10 @@ void Lidar::setOdomLidarTransform(const Transform& T_o_l) { T_o_l_ = T_o_l; }
 
 const Transform& Lidar::getOdomLidarTransform() const { return T_o_l_; }
 
+size_t Lidars::getNumberOfLidars() const{
+  return lidar_vector_.size();
+}
+
 bool Lidars::hasAtleastNScans(const size_t n) const {
   if (lidar_vector_.empty()) {
     return false;
@@ -216,7 +228,7 @@ bool Lidars::hasAtleastNScans(const size_t n) const {
 void Lidars::addPointcloud(const LidarId& lidar_id,
                            const Pointcloud& pointcloud) {
   if (id_to_idx_map_.count(lidar_id) == 0) {
-    lidar_vector_.emplace_back(lidar_id, 1.0, 100.0);
+    lidar_vector_.emplace_back(lidar_id, 2.0, 100.0);
     id_to_idx_map_[lidar_id] = lidar_vector_.size() - 1;
   }
   lidar_vector_[id_to_idx_map_.at(lidar_id)].addPointcloud(pointcloud);
