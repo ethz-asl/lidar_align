@@ -73,8 +73,7 @@ Transform Odom::getOdomTransform(const Timestamp timestamp_us,
 Scan::Scan(const Pointcloud& in)
     : timestamp_us_(in.header.stamp),
       raw_points_(in),
-      odom_transform_set_(false),
-      lidar_transform_set_(false){};
+      odom_transform_set_(false){};
 
 void Scan::setOdomTransform(const Odom& odom, const size_t start_idx,
                             size_t* match_idx) {
@@ -93,22 +92,7 @@ void Scan::setOdomTransform(const Odom& odom, const size_t start_idx,
   odom_transform_set_ = true;
 }
 
-void Scan::setLidarTransform(const Transform& T_l0_lt) {
-  T_l0_lt_ = T_l0_lt;
-  lidar_transform_set_ = true;
-}
-
-const Pointcloud& Scan::getRawPointcloud() const { return raw_points_; }
-
-const Transform& Scan::getOdomTransform() const {
-  if (!odom_transform_set_) {
-    throw std::runtime_error("Odom transform requested before it has been set");
-  }
-  return T_o0_ot_[0];
-}
-
-Pointcloud Scan::getTimeAlignedPointcloud(const Transform& T_o_l) const {
-  Pointcloud output_points;
+void Scan::getTimeAlignedPointcloud(const Transform& T_o_l, Pointcloud* pointcloud) const {
 
   for (size_t i = 0; i < raw_points_.size(); ++i) {
     Transform T_o_lt = T_o0_ot_[i] * T_o_l;
@@ -116,10 +100,8 @@ Pointcloud Scan::getTimeAlignedPointcloud(const Transform& T_o_l) const {
     Eigen::Affine3f pcl_transform;
     pcl_transform.matrix() = T_o_lt.cast<float>().getTransformationMatrix();
 
-    output_points.push_back(pcl::transformPoint(raw_points_[i], pcl_transform));
+    pointcloud->push_back(pcl::transformPoint(raw_points_[i], pcl_transform));
   }
-
-  return output_points;
 }
 
 Lidar::Lidar(const LidarId& lidar_id, const double min_point_dist,
@@ -137,7 +119,7 @@ const Scan& Lidar::getScan(size_t idx) const {
   return scans_[idx];
 }
 
-LidarId Lidar::getId() const { return lidar_id_; }
+const LidarId& Lidar::getId() const { return lidar_id_; }
 
 void Lidar::filterPointcloud(const Pointcloud& in, Pointcloud* out) {
   out->clear();
@@ -166,29 +148,18 @@ void Lidar::addPointcloud(const Pointcloud& pointcloud) {
   scans_.push_back(pointcloud_filtered);
 }
 
+void getCombinedPointcloud(Pointcloud* pointcloud) const{
+
+  for(Scan& scan: scans_){
+    scan.getTimeAlignedPointcloud(scan.getOdomTransform() * getOdomLidarTransform(), &pointcloud);
+  }
+
+}
+
 void Lidar::saveCombinedPointcloud(const std::string& file_path) {
   Pointcloud combined;
 
-  Transform T;
-  T.getPosition().x() = 3.7;
-  T.getPosition().y() = -0.2;
-  T.getPosition().z() = 0.3;
-  T = T.inverse();
-
-  for (Scan& scan : scans_) {
-    Pointcloud tformed_scan;
-
-    Transform T_o_lt = scan.getOdomTransform() * T;  // getOdomLidarTransform();
-    pcl::transformPointCloud(scan.getRawPointcloud(), tformed_scan,
-                             T_o_lt.cast<float>().getTransformationMatrix());
-
-    for (Point& point : tformed_scan) {
-      combined.push_back(point);
-    }
-  }
-
-  pcl::transformPointCloud(combined, combined,
-                           T.inverse().cast<float>().getTransformationMatrix());
+  getCombinedPointcloud(combined);
 
   pcl::PLYWriter writer;
   writer.write(file_path, combined, true);
@@ -199,10 +170,6 @@ void Lidar::setOdomOdomTransforms(const Odom& odom) {
   for (Scan& scan : scans_) {
     scan.setOdomTransform(odom, idx, &idx);
   }
-}
-
-void Lidar::setLidarLidarTransform(const Transform& T, const size_t& scan_idx) {
-  scans_[scan_idx].setLidarTransform(T);
 }
 
 void Lidar::setOdomLidarTransform(const Transform& T_o_l) { T_o_l_ = T_o_l; }
@@ -234,8 +201,6 @@ void Lidars::addPointcloud(const LidarId& lidar_id,
   lidar_vector_[id_to_idx_map_.at(lidar_id)].addPointcloud(pointcloud);
 }
 
-const Lidar& Lidars::getLidar(const LidarId& lidar_id) const {
-  return lidar_vector_[id_to_idx_map_.at(lidar_id)];
-}
+std::vector<Lidar>& Lidars::getLidarVector() { return lidar_vector_; }
 
-std::vector<Lidar>& Lidars::getLidarsRef() { return lidar_vector_; }
+const std::vector<const Lidar>& Lidars::getLidarVector() { return lidar_vector_; }

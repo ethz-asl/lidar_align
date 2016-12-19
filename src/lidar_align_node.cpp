@@ -81,13 +81,6 @@ int main(int argc, char** argv) {
 
   Aligner aligner;
 
-  /*std::vector<Lidar> lidar_vector = lidars.getLidarsRef();
-  ROS_INFO("Finding lidar-lidar transforms");
-  for(Lidar& lidar : lidar_vector){
-    ROS_INFO_STREAM("Setting transforms for lidar " << lidar.getId());
-    aligner.setLidarTransforms(&lidar);
-  }*/
-
   ROS_INFO("Finding odom-lidar transforms");
   for (Lidar& lidar : lidar_vector) {
     ROS_INFO_STREAM("Setting transforms for lidar " << lidar.getId());
