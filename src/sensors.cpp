@@ -85,7 +85,8 @@ void Scan::setOdomTransform(const Odom& odom, const size_t start_idx,
   // distributed in time and that one scan lasts 40000us
   size_t i = 0;
   for (Point point : raw_points_) {
-    Timestamp point_ts_us = timestamp_us_ + ((40000.0 * i) / raw_points_.size());
+    Timestamp point_ts_us =
+        timestamp_us_ + ((40000.0 * i) / raw_points_.size());
     ++i;
     T_o0_ot_.push_back(
         odom.getOdomTransform(point_ts_us, start_idx, match_idx));
@@ -157,38 +158,31 @@ void Lidar::addPointcloud(const Pointcloud& pointcloud) {
   filterPointcloud(pointcloud, &pointcloud_filtered);
 
   pcl::StatisticalOutlierRemoval<Point> sor;
-  sor.setInputCloud (pointcloud.makeShared());
-  sor.setMeanK (10);
-  sor.setStddevMulThresh (0.7);
+  sor.setInputCloud(pointcloud_filtered.makeShared());
+  sor.setMeanK(10);
+  sor.setStddevMulThresh(1.0);
   sor.filter(pointcloud_filtered);
 
-  std::cerr << pointcloud_filtered.size() << " " << pointcloud.size() << std::endl;
+  // std::cerr << pointcloud_filtered.size() << " " << pointcloud.size() <<
+  // std::endl;
   scans_.push_back(pointcloud_filtered);
 }
 
 void Lidar::saveCombinedPointcloud(const std::string& file_path) {
   Pointcloud combined;
 
-  Transform T;
-  T.getPosition().x() = 3.7;
-  T.getPosition().y() = -0.2;
-  T.getPosition().z() = 0.3;
-  T = T.inverse();
-
   for (Scan& scan : scans_) {
-    Pointcloud tformed_scan;
-
-    Transform T_o_lt = scan.getOdomTransform() * T;  // getOdomLidarTransform();
-    pcl::transformPointCloud(scan.getRawPointcloud(), tformed_scan,
-                             T_o_lt.cast<float>().getTransformationMatrix());
+    Pointcloud tformed_scan =
+        scan.getTimeAlignedPointcloud(getOdomLidarTransform());
 
     for (Point& point : tformed_scan) {
       combined.push_back(point);
     }
   }
 
-  pcl::transformPointCloud(combined, combined,
-                           T.inverse().cast<float>().getTransformationMatrix());
+  pcl::transformPointCloud(
+      combined, combined,
+      getOdomLidarTransform().cast<float>().getTransformationMatrix());
 
   pcl::PLYWriter writer;
   writer.write(file_path, combined, true);
@@ -209,9 +203,7 @@ void Lidar::setOdomLidarTransform(const Transform& T_o_l) { T_o_l_ = T_o_l; }
 
 const Transform& Lidar::getOdomLidarTransform() const { return T_o_l_; }
 
-size_t Lidars::getNumberOfLidars() const{
-  return lidar_vector_.size();
-}
+size_t Lidars::getNumberOfLidars() const { return lidar_vector_.size(); }
 
 bool Lidars::hasAtleastNScans(const size_t n) const {
   if (lidar_vector_.empty()) {
@@ -228,7 +220,7 @@ bool Lidars::hasAtleastNScans(const size_t n) const {
 void Lidars::addPointcloud(const LidarId& lidar_id,
                            const Pointcloud& pointcloud) {
   if (id_to_idx_map_.count(lidar_id) == 0) {
-    lidar_vector_.emplace_back(lidar_id, 2.0, 100.0);
+    lidar_vector_.emplace_back(lidar_id, 2.0, 20.0);
     id_to_idx_map_[lidar_id] = lidar_vector_.size() - 1;
   }
   lidar_vector_[id_to_idx_map_.at(lidar_id)].addPointcloud(pointcloud);

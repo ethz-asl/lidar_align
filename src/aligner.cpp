@@ -16,6 +16,15 @@ Scalar Aligner::trimmedMeans(const std::vector<Scalar>& raw_error,
          (std::ceil(inlier_ratio * sorted_error.size()));
 }
 
+Scalar Aligner::thresholdedSum(const std::vector<Scalar>& raw_error,
+                               const Scalar& threshold) const {
+  Scalar total;
+  for (const Scalar& x : raw_error) {
+    total += std::min(x, threshold);
+  }
+  return total;
+}
+
 void Aligner::setLidarTransforms(Lidar* lidar) {
   Transform T;
   lidar->setLidarLidarTransform(T, 0);
@@ -85,67 +94,90 @@ Scalar Aligner::lidarOdomCPError(const Lidar& lidar) const {
   return err;
 }
 
-Scalar Aligner::lidarOdomProjGridError(const Lidar& lidar,
-                                       const Scalar& grid_res) const {
-  std::map<std::tuple<size_t, size_t, size_t>, size_t> proj_grid;
+Scalar Aligner::lidarOdomKNNError(const Lidar& lidar, const size_t k) const {
+  pcl::KdTreeFLANN<Point> kdtree;
+  Pointcloud::Ptr combined_ptr =
+      boost::make_shared<Pointcloud>(*(new Pointcloud));
+
   for (size_t idx = 0; idx < lidar.getNumberOfScans(); ++idx) {
     Pointcloud tformed_scan = lidar.getScan(idx).getTimeAlignedPointcloud(
         lidar.getOdomLidarTransform());
 
     for (Point& point : tformed_scan) {
-      std::tuple<size_t, size_t, size_t> loc =
-          std::make_tuple(static_cast<size_t>(point.x / grid_res),
-                          static_cast<size_t>(point.y / grid_res),
-                          static_cast<size_t>(point.z / grid_res));
-      if (proj_grid.count(loc) == 0) {
-        proj_grid[loc] = 1;
-      } else {
-        proj_grid[loc]++;
-      }
+      combined_ptr->push_back(point);
     }
   }
-  // return proj_grid.size();
-  Scalar total_error = 0;
-  for (const std::pair<std::tuple<size_t, size_t, size_t>, size_t>& cell :
-       proj_grid) {
-    total_error -= static_cast<Scalar>(cell.second) *
-                   std::log2(static_cast<Scalar>(cell.second));
+
+  kdtree.setInputCloud(combined_ptr);
+
+  std::vector<int> kdtree_idx(k);
+  std::vector<float> kdtree_dist(k);
+
+  Scalar error = 0;
+  for (Point point : *combined_ptr) {
+    kdtree.nearestKSearch(point, k, kdtree_idx, kdtree_dist);
+    for (const Scalar& x : kdtree_dist) {
+      error += std::min(x,1.0);
+    }
   }
 
-  return total_error;
+  return error;
 }
 
-Scalar Aligner::lidarsOdomProjGridError(Lidars& lidars,
-                                        const Scalar& grid_res) const {
-  std::map<std::tuple<size_t, size_t, size_t>, size_t> proj_grid;
-  for (Lidar& lidar : lidars.getLidarsRef()) {
+Scalar Aligner::lidarsOdomKNNError(Lidars& lidars, const size_t k) {
+  pcl::KdTreeFLANN<Point> kdtree;
+  Pointcloud::Ptr combined_ptr =
+      boost::make_shared<Pointcloud>(*(new Pointcloud));
+
+  for(Lidar& lidar : lidars.getLidarsRef()){ 
     for (size_t idx = 0; idx < lidar.getNumberOfScans(); ++idx) {
       Pointcloud tformed_scan = lidar.getScan(idx).getTimeAlignedPointcloud(
           lidar.getOdomLidarTransform());
 
       for (Point& point : tformed_scan) {
-        std::tuple<size_t, size_t, size_t> loc =
-            std::make_tuple(static_cast<size_t>(point.x / grid_res),
-                            static_cast<size_t>(point.y / grid_res),
-                            static_cast<size_t>(point.z / grid_res));
-        if (proj_grid.count(loc) == 0) {
-          proj_grid[loc] = 1;
-        } else {
-          proj_grid[loc]++;
-        }
+        combined_ptr->push_back(point);
       }
     }
   }
 
-  // return proj_grid.size();
-  Scalar total_error = 0;
-  for (const std::pair<std::tuple<size_t, size_t, size_t>, size_t>& cell :
-       proj_grid) {
-    total_error -= static_cast<Scalar>(cell.second) *
-                   std::log2(static_cast<Scalar>(cell.second));
+  kdtree.setInputCloud(combined_ptr);
+
+  std::vector<int> kdtree_idx(k);
+  std::vector<float> kdtree_dist(k);
+
+  Scalar error = 0;
+  for (Point point : *combined_ptr) {
+    kdtree.nearestKSearch(point, k, kdtree_idx, kdtree_dist);
+    for (const Scalar& x : kdtree_dist) {
+      error += std::min(x,1.0);
+    }
   }
 
-  return total_error;
+  return error;
+}
+
+Scalar Aligner::lidarsOdomVoxelEntropyError(Lidars& lidars) const {
+  VoxelPyramid voxel_pyramid(0.01, 10);
+  voxel_pyramid.addLidars(lidars);
+  return voxel_pyramid.calculateEntropy();
+}
+
+Scalar Aligner::lidarOdomVoxelEntropyError(Lidar& lidar) const {
+  VoxelPyramid voxel_pyramid(0.01, 10);
+  voxel_pyramid.addLidar(lidar);
+  return voxel_pyramid.calculateEntropy();
+
+  Scalar error = 0;
+  for (size_t idx = 1; idx < lidar.getNumberOfScans(); ++idx) {
+    VoxelPyramid voxel_pyramid(0.01, 10);
+
+    voxel_pyramid.addPointcloud(lidar.getScan(idx - 1).getTimeAlignedPointcloud(
+        lidar.getOdomLidarTransform()));
+    voxel_pyramid.addPointcloud(lidar.getScan(idx).getTimeAlignedPointcloud(
+        lidar.getOdomLidarTransform()));
+    error += voxel_pyramid.calculateEntropy();
+  }
+  return error;
 }
 
 Transform Aligner::vecToTransform(const std::vector<double>& vec,
@@ -208,7 +240,7 @@ double Aligner::LidarOdomMinimizer(const std::vector<double>& x,
   Transform T = Aligner::vecToTransform(x, data.first->getOdomLidarTransform());
   data.first->setOdomLidarTransform(T);
 
-  double error = data.second->lidarOdomProjGridError(*data.first, 0.2);
+  double error = data.second->lidarOdomKNNError(*data.first,10);
 
   std::cout << "\b\r";
   std::cout << "Transform: ";
@@ -253,7 +285,7 @@ double Aligner::LidarOdomJointMinimizer(const std::vector<double>& x,
     std::cout << std::endl;
   }
 
-  double error = data.second->lidarsOdomProjGridError(*data.first, 0.5);
+  double error = data.second->lidarsOdomKNNError(*data.first,10);
 
   std::cout << "Error: " << std::setw(12) << error << std::endl;
 
@@ -266,7 +298,7 @@ void Aligner::lidarOdomTransform(const size_t num_params, Lidar* lidar_ptr) {
   std::cerr << "Initial transform:\n"
             << lidar_ptr->getOdomLidarTransform() << "\n";
 
-  nlopt::opt opt(nlopt::LN_NELDERMEAD, num_params);
+  nlopt::opt opt(nlopt::GN_DIRECT_L, num_params);
 
   std::vector<double> inital_guess =
       transformToVec(lidar_ptr->getOdomLidarTransform(), num_params);
@@ -280,13 +312,13 @@ void Aligner::lidarOdomTransform(const size_t num_params, Lidar* lidar_ptr) {
     range.push_back(0.5);
   }
   if (num_params > 3) {
-    range.push_back(0.05);
-    range.push_back(0.05);
+    range.push_back(0.1);
+    range.push_back(0.1);
   }
   if (num_params == 1) {
-    range.push_back(4);
+    range.push_back(3.2);
   } else if (num_params >= 3) {
-    range.push_back(0.3);
+    range.push_back(0.5);
   }
 
   std::vector<double> lb(num_params);
@@ -298,12 +330,13 @@ void Aligner::lidarOdomTransform(const size_t num_params, Lidar* lidar_ptr) {
 
   opt.set_lower_bounds(lb);
   opt.set_upper_bounds(ub);
-  opt.set_maxeval(200);
+  opt.set_maxeval(300);
 
   opt.set_min_objective(LidarOdomMinimizer, &data);
 
   double minf;
   nlopt::result result = opt.optimize(inital_guess, minf);
+  LidarOdomMinimizer(inital_guess, inital_guess, &data);
 
   std::cerr << "Final transform:\n"
             << lidar_ptr->getOdomLidarTransform() << "\n";
@@ -329,14 +362,14 @@ void Aligner::lidarOdomJointTransform(const size_t num_params,
 
     std::vector<double> range;
     if (num_params > 1) {
-      range.push_back(3);
+      range.push_back(2);
       range.push_back(2);
     }
     if (num_params == 6) {
       range.push_back(0.5);
     }
     if (num_params > 3) {
-      range.push_back(0.05);
+      range.push_back(0.1);
       range.push_back(0.05);
     }
     range.push_back(0.05);
@@ -352,11 +385,64 @@ void Aligner::lidarOdomJointTransform(const size_t num_params,
   nlopt::opt opt(nlopt::LN_NELDERMEAD, num_lidar * num_params);
   opt.set_lower_bounds(lb);
   opt.set_upper_bounds(ub);
-  opt.set_maxeval(1000);
+  opt.set_maxeval(4000);
   opt.set_min_objective(LidarOdomJointMinimizer, &data);
   double minf;
   nlopt::result result = opt.optimize(inital_guess, minf);
+  LidarOdomJointMinimizer(inital_guess, inital_guess, &data);
+
 
   // std::cerr << "Final transform:\n"
   //          << lidar_ptr->getOdomLidarTransform() << "\n";
+}
+
+VoxelPyramid::VoxelPyramid(float element_size, size_t levels)
+    : element_size_(element_size), voxel_pyramid_(levels){};
+
+void VoxelPyramid::addPointcloud(const Pointcloud& pointcloud) {
+  for (const Point& point : pointcloud) {
+    std::tuple<int, int, int> voxel_location =
+        std::make_tuple(static_cast<int>(point.x / element_size_),
+                        static_cast<int>(point.y / element_size_),
+                        static_cast<int>(point.z / element_size_));
+
+    for (std::map<std::tuple<int, int, int>, int>& voxel_map : voxel_pyramid_) {
+      voxel_map[voxel_location]++;
+      voxel_location = std::make_tuple(std::get<0>(voxel_location) / 2,
+                                       std::get<1>(voxel_location) / 2,
+                                       std::get<2>(voxel_location) / 2);
+    }
+  }
+}
+
+void VoxelPyramid::addLidar(Lidar& lidar) {
+  for (size_t idx = 0; idx < lidar.getNumberOfScans(); ++idx) {
+    addPointcloud(lidar.getScan(idx).getTimeAlignedPointcloud(
+        lidar.getOdomLidarTransform()));
+  }
+}
+
+void VoxelPyramid::addLidars(Lidars& lidars) {
+  for (Lidar& lidar : lidars.getLidarsRef()) {
+    addLidar(lidar);
+  }
+}
+
+Scalar VoxelPyramid::calculateEntropy() {
+  Scalar entropy = 0;
+
+  for (std::map<std::tuple<int, int, int>, int>& voxel_map : voxel_pyramid_) {
+    // entropy += voxel_map.size();/*
+    for (const std::pair<std::tuple<int, int, int>, int>& voxel : voxel_map) {
+      entropy += std::log2(static_cast<Scalar>(voxel.second));
+    }
+    // entropy /= 2;
+  }
+  return entropy;
+}
+
+void VoxelPyramid::clear() {
+  for (std::map<std::tuple<int, int, int>, int>& voxel_map : voxel_pyramid_) {
+    voxel_map.clear();
+  }
 }

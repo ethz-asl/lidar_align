@@ -3,23 +3,56 @@
 #include <rosbag/view.h>
 #include <geometry_msgs/TwistStamped.h>
 
+#include <tf/tfMessage.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/TransformStamped.h>
+#include <geometry_msgs/TwistStamped.h>
+#include <tf/transform_datatypes.h>
+
+#include <minkindr_conversions/kindr_msg.h>
+#include <minkindr_conversions/kindr_tf.h>
+
+#include <pcl_ros/point_cloud.h>
+#include <pcl/common/transforms.h>
+
 #include "lidar_align/aligner.h"
 #include "lidar_align/sensors.h"
 
 // number of frames to take when calculating rough 2D alignment
-constexpr int kDefaultUseNScans = 10000;
+constexpr int kDefaultUseNScans = 1000000;
 
 // this entire function is an ugly hack that needs deleting
 bool topicToLidarId(const std::string& topic_name, LidarId* lidar_id) {
-  //if (topic_name.find("lower") == std::string::npos) {
-  //  return false;
-  //}
 
   std::string topic_start = "lidar_";
 
   *lidar_id = std::strtol(
       &topic_name[topic_name.find(topic_start) + topic_start.size()], nullptr,
       10);
+
+  /*if (topic_name.find("lower") == std::string::npos) {
+    return false;
+  }
+  if (topic_name.find("3") != std::string::npos) {
+    return false;
+  }
+  if (topic_name.find("4") == std::string::npos) {
+    return false;
+  }*/
+
+  static std::map<std::string, size_t> sub_map;
+  if(sub_map.count(topic_name) == 0){
+    sub_map[topic_name] = 1;
+    return false;
+  }
+  else if(sub_map.at(topic_name) > 10){
+    sub_map[topic_name] = 0;
+  }
+  else{
+    sub_map[topic_name]++;
+    return false;
+  }
+
   return true;
 }
 
@@ -91,11 +124,41 @@ int main(int argc, char** argv) {
   ROS_INFO("Finding odom-lidar transforms");
   for (Lidar& lidar : lidar_vector) {
     ROS_INFO_STREAM("Setting transforms for lidar " << lidar.getId());
+    lidar.saveCombinedPointcloud("/home/z/datasets/ibeo/a.ply");
     aligner.lidarOdomTransform(1, &lidar);
+    lidar.saveCombinedPointcloud("/home/z/datasets/ibeo/b.ply");
     aligner.lidarOdomTransform(5, &lidar);
+    lidar.saveCombinedPointcloud("/home/z/datasets/ibeo/c.ply");
   }
-  aligner.lidarOdomJointTransform(2, &lidars);
+  //aligner.lidarOdomJointTransform(2, &lidars);
   aligner.lidarOdomJointTransform(6, &lidars);
+
+  ROS_INFO("Saving data");
+  rosbag::Bag bag_out;
+  bag_out.open("/home/z/datasets/ibeo/out.bag", rosbag::bagmode::Write);
+
+  for (const rosbag::MessageInstance& m : view) {
+    if (m.getDataType() == std::string("sensor_msgs/PointCloud2")) {
+      pcl::PointCloud<pcl::PointXYZI> pointcloud;
+      pcl::fromROSMsg(*(m.instantiate<sensor_msgs::PointCloud2>()), pointcloud);
+
+      bag_out.write(m.getTopic(), m.getTime(), pointcloud);
+
+      LidarId lidar_id;
+      topicToLidarId(m.getTopic(), &lidar_id);
+
+      geometry_msgs::TransformStamped transform_msg;
+      transform_msg.header.frame_id = "odom";
+      transform_msg.header.stamp = m.getTime();
+      transform_msg.child_frame_id = std::string("lidar_") + std::to_string(lidar_id);
+
+      tf::tfMessage tf_msg;
+      tf::transformKindrToMsg(lidars.getLidar(lidar_id).getOdomLidarTransform(), &transform_msg.transform);
+      tf_msg.transforms.push_back(transform_msg);
+      bag_out.write("/tf", m.getTime(), tf_msg);
+
+    }
+  }
 
   return 0;
 }

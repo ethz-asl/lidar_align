@@ -17,15 +17,20 @@ class Aligner {
 
   Scalar lidarOdomCPError(const Lidar& lidar) const;
 
-  Scalar lidarOdomProjGridError(const Lidar& lidar, const Scalar& grid_res) const;
+  Scalar lidarOdomVoxelEntropyError(Lidar& lidar) const;
 
-  Scalar lidarsOdomProjGridError(Lidars& lidars, const Scalar& grid_res) const;
+  Scalar lidarsOdomVoxelEntropyError(Lidars& lidars) const;
 
   void lidarOdomTransform(const size_t num_params, Lidar* lidar_ptr);
 
   void lidarOdomJointTransform(const size_t num_params, Lidars* lidars_ptr);
 
-  static Transform vecToTransform(const std::vector<double>& vec, const Transform& inital_T);
+  Scalar lidarOdomKNNError(const Lidar& lidar, const size_t k) const;
+
+  Scalar lidarsOdomKNNError(Lidars& lidars, const size_t k);
+
+  static Transform vecToTransform(const std::vector<double>& vec,
+                                  const Transform& inital_T);
 
   static std::vector<double> transformToVec(const Transform& T,
                                             size_t vec_length = 6);
@@ -57,7 +62,29 @@ class Aligner {
   Scalar trimmedMeans(const std::vector<Scalar>& raw_error,
                       const Scalar& inlier_ratio) const;
 
+  Scalar thresholdedSum(const std::vector<Scalar>& raw_error,
+                                 const Scalar& threshold) const;
+
   Config config_;
+};
+
+class VoxelPyramid {
+ public:
+  VoxelPyramid(float element_size, size_t levels);
+
+  void addPointcloud(const Pointcloud& pointcloud);
+
+  void addLidar(Lidar& lidar);
+
+  void addLidars(Lidars& lidars);
+
+  Scalar calculateEntropy();
+
+  void clear();
+
+ private:
+  float element_size_;
+  std::vector<std::map<std::tuple<int, int, int>, int>> voxel_pyramid_;
 };
 
 #endif  // LIDAR_ALIGN_ALIGNER_H_
