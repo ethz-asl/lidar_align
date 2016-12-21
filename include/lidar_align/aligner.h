@@ -35,7 +35,7 @@ class Aligner {
     Config() {
       knn_batch_size = 5000;
       knn_k = 10;
-      knn_max_dist = 1.0;
+      knn_max_dist = 0.1;
     }
 
     size_t knn_batch_size;

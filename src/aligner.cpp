@@ -25,13 +25,19 @@ Scalar Aligner::kNNError(const pcl::KdTreeFLANN<Point>& kdtree,
        ++idx) {
     kdtree.nearestKSearch(pointcloud[idx], k, kdtree_idx, kdtree_dist);
     for (const float& x : kdtree_dist) {
-      error += std::min(x, max_distance);
+      error += std::min(x*x, max_distance);
     }
   }
   return error;
 }
 
 Scalar Aligner::lidarOdomKNNError(const Pointcloud& pointcloud) const {
+
+  // kill optimization if node stopped
+  if(!ros::ok()){
+    throw std::runtime_error("ROS node died, exiting");
+  }
+
   // shared_pointer needed by kdtree, no-op destructor to prevent it trying to
   // clean it up after use
   Pointcloud::ConstPtr pointcloud_ptr(&pointcloud, [](const Pointcloud*) {});
@@ -57,7 +63,6 @@ Scalar Aligner::lidarOdomKNNError(const Pointcloud& pointcloud) const {
   for (std::future<Scalar>& error : errors) {
     total_error += error.get();
   }
-  //Scalar total_error = kNNError(kdtree, pointcloud, config_.knn_k, config_.knn_max_dist, 0, pointcloud.size());
 
   return total_error;
 }
@@ -282,7 +287,4 @@ void Aligner::lidarOdomJointTransform(const size_t num_params,
   double minf;
   nlopt::result result = opt.optimize(inital_guess, minf);
   LidarOdomJointMinimizer(inital_guess, inital_guess, &data);
-
-  // std::cerr << "Final transform:\n"
-  //          << lidar_ptr->getOdomLidarTransform() << "\n";
 }
