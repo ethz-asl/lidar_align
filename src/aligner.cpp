@@ -25,16 +25,16 @@ Scalar Aligner::kNNError(const pcl::KdTreeFLANN<Point>& kdtree,
        ++idx) {
     kdtree.nearestKSearch(pointcloud[idx], k, kdtree_idx, kdtree_dist);
     for (const float& x : kdtree_dist) {
-      error += std::min(x*x, max_distance);
+      //error += std::log(x + 1);
+      error += std::min(x, max_distance);
     }
   }
   return error;
 }
 
 Scalar Aligner::lidarOdomKNNError(const Pointcloud& pointcloud) const {
-
   // kill optimization if node stopped
-  if(!ros::ok()){
+  if (!ros::ok()) {
     throw std::runtime_error("ROS node died, exiting");
   }
 
@@ -43,6 +43,7 @@ Scalar Aligner::lidarOdomKNNError(const Pointcloud& pointcloud) const {
   Pointcloud::ConstPtr pointcloud_ptr(&pointcloud, [](const Pointcloud*) {});
 
   pcl::KdTreeFLANN<Point> kdtree;
+
   kdtree.setInputCloud(pointcloud_ptr);
 
   // small amount of threading here to take edge off of bottleneck
@@ -51,10 +52,10 @@ Scalar Aligner::lidarOdomKNNError(const Pointcloud& pointcloud) const {
   std::vector<std::future<Scalar>> errors;
   for (size_t start_idx = 0; start_idx < pointcloud.size();
        start_idx += config_.knn_batch_size) {
-    size_t end_idx = start_idx + 
-        std::min(pointcloud.size() - start_idx, config_.knn_batch_size);
+    size_t end_idx = start_idx + std::min(pointcloud.size() - start_idx,
+                                          config_.knn_batch_size);
     errors.emplace_back(std::async(std::launch::async, Aligner::kNNError,
-                                   kdtree, pointcloud, config_.knn_k,
+                                   kdtree, pointcloud, config_.knn_k+1,
                                    config_.knn_max_dist, start_idx, end_idx));
   }
 
@@ -74,9 +75,53 @@ Scalar Aligner::lidarOdomKNNError(const Lidar& lidar) const {
 }
 
 Scalar Aligner::lidarOdomKNNError(const LidarArray& lidar_array) const {
-  Pointcloud pointcloud;
-  lidar_array.getCombinedPointcloud(&pointcloud);
-  return lidarOdomKNNError(pointcloud);
+  Scalar total_error = 0;
+
+  for (const Lidar& lidar : lidar_array.getLidarVector()) {
+    Pointcloud pointcloud;
+    Pointcloud base;
+    for (const Lidar& lidar2 : lidar_array.getLidarVector()) {
+      if (lidar.getId() != lidar2.getId()) {
+        lidar2.getCombinedPointcloud(&pointcloud);
+      } else {
+        lidar2.getCombinedPointcloud(&base);
+      }
+    }
+
+    // kill optimization if node stopped
+    if (!ros::ok()) {
+      throw std::runtime_error("ROS node died, exiting");
+    }
+
+    // shared_pointer needed by kdtree, no-op destructor to prevent it trying to
+    // clean it up after use
+    Pointcloud::ConstPtr pointcloud_ptr(&pointcloud, [](const Pointcloud*) {});
+
+    pcl::KdTreeFLANN<Point> kdtree;
+
+    kdtree.setInputCloud(pointcloud_ptr);
+
+    // small amount of threading here to take edge off of bottleneck
+    // break knn lookup up into several smaller problems each running in their
+    // own
+    // thread
+    std::vector<std::future<Scalar>> errors;
+    for (size_t start_idx = 0; start_idx < base.size();
+         start_idx += config_.knn_batch_size) {
+      size_t end_idx =
+          start_idx + std::min(base.size() - start_idx, config_.knn_batch_size);
+      errors.emplace_back(std::async(std::launch::async, Aligner::kNNError,
+                                     kdtree, base, config_.knn_k,
+                                     config_.knn_max_dist, start_idx, end_idx));
+    }
+
+    // wait for threads to finish and grab results
+    for (std::future<Scalar>& error : errors) {
+      total_error += error.get();
+    }
+  }
+
+  return total_error;
 }
 
 Transform Aligner::vecToTransform(const std::vector<double>& vec,
@@ -147,7 +192,7 @@ double Aligner::LidarOdomMinimizer(const std::vector<double>& x,
       *static_cast<std::pair<Lidar*, Aligner*>*>(f_data);
 
   if (!grad.empty()) {
-  //  std::cerr << "error gradient in use" << std::endl;
+    //  std::cerr << "error gradient in use" << std::endl;
   }
 
   Transform T = Aligner::vecToTransform(x, data.first->getOdomLidarTransform());
@@ -169,7 +214,7 @@ double Aligner::LidarOdomJointMinimizer(const std::vector<double>& x,
       *static_cast<std::pair<LidarArray*, Aligner*>*>(f_data);
 
   if (!grad.empty()) {
-  //  std::cerr << "error gradient in use" << std::endl;
+    //  std::cerr << "error gradient in use" << std::endl;
   }
 
   std::vector<Lidar>& lidar_vec = data.first->getLidarVector();
@@ -201,22 +246,21 @@ void Aligner::lidarOdomTransform(const size_t num_params, Lidar* lidar_ptr) {
   std::vector<double> inital_guess =
       transformToVec(lidar_ptr->getOdomLidarTransform(), num_params);
 
+  // check range of 10 meters + within 10 degrees of horizontal
   std::vector<double> range;
   if (num_params > 1) {
-    range.push_back(4);
-    range.push_back(1.5);
+    range.push_back(10);
+    range.push_back(10);
   }
   if (num_params == 6) {
-    range.push_back(0.5);
+    range.push_back(10);
   }
   if (num_params > 3) {
-    range.push_back(0.1);
-    range.push_back(0.1);
+    range.push_back(0.17);
+    range.push_back(0.17);
   }
-  if (num_params == 1) {
+  if (num_params != 2) {
     range.push_back(3.2);
-  } else if (num_params >= 3) {
-    range.push_back(0.5);
   }
 
   std::vector<double> lb(num_params);
@@ -228,7 +272,10 @@ void Aligner::lidarOdomTransform(const size_t num_params, Lidar* lidar_ptr) {
 
   opt.set_lower_bounds(lb);
   opt.set_upper_bounds(ub);
-  opt.set_maxeval(300);
+
+  // only doing a rough estimate so stop quickly
+  opt.set_maxeval(200);
+  opt.set_xtol_abs(0.05);
 
   opt.set_min_objective(LidarOdomMinimizer, &data);
 
@@ -263,13 +310,15 @@ void Aligner::lidarOdomJointTransform(const size_t num_params,
       range.push_back(2);
     }
     if (num_params == 6) {
-      range.push_back(0.5);
+      range.push_back(1);
     }
     if (num_params > 3) {
       range.push_back(0.1);
-      range.push_back(0.05);
+      range.push_back(0.1);
     }
-    range.push_back(0.05);
+    if (num_params != 2) {
+      range.push_back(0.2);
+    }
 
     for (size_t j = 0; j < num_params; ++j) {
       lb[offset + j] = inital_guess[offset + j] - range[j];
@@ -282,7 +331,8 @@ void Aligner::lidarOdomJointTransform(const size_t num_params,
   nlopt::opt opt(nlopt::LN_NELDERMEAD, num_lidar * num_params);
   opt.set_lower_bounds(lb);
   opt.set_upper_bounds(ub);
-  opt.set_maxeval(4000);
+  opt.set_maxeval(2000);
+  opt.set_xtol_abs(0.001);
   opt.set_min_objective(LidarOdomJointMinimizer, &data);
   double minf;
   nlopt::result result = opt.optimize(inital_guess, minf);

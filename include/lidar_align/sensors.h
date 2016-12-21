@@ -1,6 +1,8 @@
 #ifndef LIDAR_ALIGN_SENSORS_H_
 #define LIDAR_ALIGN_SENSORS_H_
 
+#include <random>
+
 #include <pcl/common/transforms.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/kdtree/kdtree_flann.h>

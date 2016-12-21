@@ -20,33 +20,24 @@
 #include "lidar_align/table.h"
 
 // number of frames to take when calculating rough 2D alignment
-constexpr int kDefaultUseNScans = 100;
+constexpr int kDefaultUseNScans = 100000000;
 
 // this entire function is an ugly hack that needs deleting
 bool topicToLidarId(const std::string& topic_name, LidarId* lidar_id) {
 
   *lidar_id = topic_name;
 
-  /*if (topic_name.find("lower") == std::string::npos) {
-    return false;
-  }
-  if (topic_name.find("3") != std::string::npos) {
-    return false;
-  }
-  if (topic_name.find("5") == std::string::npos) {
-    return false;
-  }*/
-
+  /*
   static std::map<std::string, size_t> sub_map;
   if (sub_map.count(topic_name) == 0) {
     sub_map[topic_name] = 1;
     return false;
-  } else if (sub_map.at(topic_name) > 10) {
+  } else if (sub_map.at(topic_name) > 20) {
     sub_map[topic_name] = 0;
   } else {
     sub_map[topic_name]++;
     return false;
-  }
+  }*/
 
   return true;
 }
@@ -145,7 +136,7 @@ int main(int argc, char** argv) {
       geometry_msgs::TransformStamped transform_msg;
       transform_msg.header.frame_id = "odom";
       transform_msg.header.stamp = m.getTime();
-      transform_msg.child_frame_id = lidar_id;
+      transform_msg.child_frame_id = lidar_id.substr(0, lidar_id.find("/", 0));
 
       tf::tfMessage tf_msg;
       tf::transformKindrToMsg(

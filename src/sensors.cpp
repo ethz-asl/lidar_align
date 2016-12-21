@@ -123,7 +123,14 @@ const LidarId& Lidar::getId() const { return lidar_id_; }
 
 void Lidar::filterPointcloud(const Pointcloud& in, Pointcloud* out) {
   out->clear();
+
+  std::default_random_engine generator;
+  std::uniform_real_distribution<float> distribution(0,1);
+
   for (Point point : in) {
+    if(distribution(generator) > 0.003){
+      continue;
+    }
     float sq_dist = point.x * point.x + point.y * point.y + point.z * point.z;
     if (std::isfinite(sq_dist) &&
         (sq_dist > (min_point_dist_ * min_point_dist_)) &&
@@ -137,13 +144,13 @@ void Lidar::filterPointcloud(const Pointcloud& in, Pointcloud* out) {
 void Lidar::addPointcloud(const Pointcloud& pointcloud) {
   Pointcloud pointcloud_filtered;
   filterPointcloud(pointcloud, &pointcloud_filtered);
-
+/*
   pcl::StatisticalOutlierRemoval<Point> sor;
   sor.setInputCloud(pointcloud_filtered.makeShared());
   sor.setMeanK(10);
   sor.setStddevMulThresh(1.0);
   sor.filter(pointcloud_filtered);
-
+*/
   // std::cerr << pointcloud_filtered.size() << " " << pointcloud.size() <<
   // std::endl;
   scans_.push_back(pointcloud_filtered);
