@@ -9,12 +9,13 @@
 
 #include <kindr/minimal/quat-transformation.h>
 
-typedef int LidarId;
-typedef double Scalar;
+typedef std::string LidarId;
+typedef float Scalar;
 // this must be at least 64 bit and signed or things will break
 typedef long long int Timestamp;
 
 typedef kindr::minimal::QuatTransformationTemplate<Scalar> Transform;
+typedef kindr::minimal::AngleAxisTemplate<Scalar> AngleAxis;
 typedef pcl::PointXYZI Point;
 typedef pcl::PointCloud<Point> Pointcloud;
 
@@ -51,47 +52,41 @@ class Scan {
   void setOdomTransform(const Odom& odom, const size_t start_idx,
                         size_t* match_idx);
 
-  void setLidarTransform(const Transform& T_o0_ot);
-
   const Transform& getOdomTransform() const;
 
   const Pointcloud& getRawPointcloud() const;
 
-  Pointcloud getTimeAlignedPointcloud(const Transform& T_o_l) const;
+  void getTimeAlignedPointcloud(const Transform& T_o_l, Pointcloud* pointcloud) const;
 
  private:
   Timestamp timestamp_us_;  // signed to allow simpler comparisons
   Pointcloud raw_points_;
-  Transform T_l0_lt_;  // absolute lidar transform at this timestamp
   std::vector<Transform>
       T_o0_ot_;  // absolute odom transform to each point in pointcloud
 
-  bool synced_;
   bool odom_transform_set_;
-  bool lidar_transform_set_;
 };
 
 class Lidar {
  public:
-  Lidar(const LidarId& lidar_id, const Scalar min_point_dist,
-        const Scalar max_point_dist);
+  Lidar(const LidarId& lidar_id, const Scalar& min_point_dist,
+        const Scalar& max_point_dist);
 
-  size_t getNumberOfScans() const;
+  const size_t getNumberOfScans() const;
 
-  LidarId getId() const;
+  //note points are appended so any points in *pointcloud are preserved
+  void getCombinedPointcloud(Pointcloud* pointcloud) const;
 
-  const Scan& getScan(size_t idx) const;
+  const LidarId& getId() const;
 
   void addPointcloud(const Pointcloud& pointcloud);
 
   void setOdomOdomTransforms(const Odom& odom);
 
-  void setLidarLidarTransform(const Transform& T, const size_t& scan_idx);
-
   void setOdomLidarTransform(const Transform& T_o_l);
 
   // used for debugging frames
-  void saveCombinedPointcloud(const std::string& file_path);
+  void saveCombinedPointcloud(const std::string& file_path) const;
 
   const Transform& getOdomLidarTransform() const;
 
@@ -107,26 +102,30 @@ class Lidar {
   void filterPointcloud(const Pointcloud& in, Pointcloud* out);
 };
 
-class Lidars {
+class LidarArray {
  public:
+
+  const size_t getNumberOfLidars() const;
+
   void addPointcloud(const LidarId& lidar_id, const Pointcloud& pointcloud);
+
+  void getCombinedPointcloud(Pointcloud* pointcloud) const;
 
   const Lidar& getLidar(const LidarId& lidar_id) const;
 
-  std::vector<Lidar>& getLidarsRef();
+  std::vector<Lidar>& getLidarVector();
 
-  size_t getNumberOfLidars() const;
+  const std::vector<Lidar>& getLidarVector() const;
 
   bool hasAtleastNScans(const size_t n) const;
+
+  void setOdomOdomTransforms(const Odom& odom);
 
  private:
   // while it is nice to refer to lidars by id, we often just need a vector of
   // them (thus why the lidars are not in the map directly)
   std::map<LidarId, size_t> id_to_idx_map_;
   std::vector<Lidar> lidar_vector_;
-
-  // static constexpr Scalar kMinPointDist = 1.0;
-  // static constexpr Scalar kMaxPointDist = 100.0;
 };
 
 #endif

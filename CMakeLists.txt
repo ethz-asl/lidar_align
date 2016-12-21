@@ -3,8 +3,12 @@ project(lidar_align)
 
 add_definitions(-std=c++11 -o3)
 
+
+find_package(Curses REQUIRED)
 find_package(catkin_simple REQUIRED)
 catkin_simple(ALL_DEPS_REQUIRED)
+
+include_directories(${CURSES_INCLUDE_DIRS})
 
 ############
 # BINARIES #
@@ -12,10 +16,9 @@ catkin_simple(ALL_DEPS_REQUIRED)
 add_executable(lidar_align 
   src/lidar_align_node.cpp
   src/sensors.cpp
-  src/aligner.cpp 
-  src/icp.cpp 
+  src/aligner.cpp  
 )
-target_link_libraries(lidar_align ${catkin_LIBRARIES})
+target_link_libraries(lidar_align ${catkin_LIBRARIES} ${CURSES_LIBRARIES})
 
 ##########
 # EXPORT #

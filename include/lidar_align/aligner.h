@@ -1,33 +1,22 @@
 #ifndef LIDAR_ALIGN_ALIGNER_H_
 #define LIDAR_ALIGN_ALIGNER_H_
 
+#include <future>
+#include <limits>
+#include <ncurses.h>
 #include <nlopt.hpp>
+
 #include "lidar_align/sensors.h"
+#include "lidar_align/table.h"
 
 class Aligner {
  public:
-  void setLidarTransforms(Lidar* lidar);
-
-  Transform scanScanICPTransform(
-      const Scan& scan_a, const Scan& scan_b,
-      const Transform& T_a_b_inital = Transform()) const;
-
-  Scalar scanScanCPError(const Scan& scan_a, const Scan& scan_b,
-                         const Transform& T_a_b) const;
-
-  Scalar lidarOdomCPError(const Lidar& lidar) const;
-
-  Scalar lidarOdomVoxelEntropyError(Lidar& lidar) const;
-
-  Scalar lidarsOdomVoxelEntropyError(Lidars& lidars) const;
+  Aligner(std::shared_ptr<Table> table_ptr);
 
   void lidarOdomTransform(const size_t num_params, Lidar* lidar_ptr);
 
-  void lidarOdomJointTransform(const size_t num_params, Lidars* lidars_ptr);
-
-  Scalar lidarOdomKNNError(const Lidar& lidar, const size_t k) const;
-
-  Scalar lidarsOdomKNNError(Lidars& lidars, const size_t k);
+  void lidarOdomJointTransform(const size_t num_params,
+                               LidarArray* lidar_array_ptr);
 
   static Transform vecToTransform(const std::vector<double>& vec,
                                   const Transform& inital_T);
@@ -36,21 +25,34 @@ class Aligner {
                                             size_t vec_length = 6);
 
  private:
+
+  void updateTableRow(const Lidar& lidar);
+
+  void updateTableFooter(const Scalar error);
+
   struct Config {
     // set default values
     Config() {
-      icp_iterations = 30;
-      icp_inlier_ratio = 0.8;
-      cp_inlier_ratio = 0.8;
-      lidar_odom_cp_inlier_ratio = 0.8;
-    };
+      knn_batch_size = 5000;
+      knn_k = 10;
+      knn_max_dist = 1.0;
+    }
 
-    size_t icp_iterations;
-
-    Scalar icp_inlier_ratio;
-    Scalar cp_inlier_ratio;
-    Scalar lidar_odom_cp_inlier_ratio;
+    size_t knn_batch_size;
+    size_t knn_k;
+    float knn_max_dist;
   };
+
+  static Scalar kNNError(
+      const pcl::KdTreeFLANN<Point>& kdtree, const Pointcloud& pointcloud,
+      const size_t k, const float max_distance, const size_t start_idx = 0,
+      const size_t end_idx = std::numeric_limits<size_t>::max());
+
+  Scalar lidarOdomKNNError(const Pointcloud& pointcloud) const;
+
+  Scalar lidarOdomKNNError(const Lidar& lidar) const;
+
+  Scalar lidarOdomKNNError(const LidarArray& lidar_array) const;
 
   static double LidarOdomMinimizer(const std::vector<double>& x,
                                    std::vector<double>& grad, void* f_data);
@@ -59,32 +61,8 @@ class Aligner {
                                         std::vector<double>& grad,
                                         void* f_data);
 
-  Scalar trimmedMeans(const std::vector<Scalar>& raw_error,
-                      const Scalar& inlier_ratio) const;
-
-  Scalar thresholdedSum(const std::vector<Scalar>& raw_error,
-                                 const Scalar& threshold) const;
-
   Config config_;
-};
-
-class VoxelPyramid {
- public:
-  VoxelPyramid(float element_size, size_t levels);
-
-  void addPointcloud(const Pointcloud& pointcloud);
-
-  void addLidar(Lidar& lidar);
-
-  void addLidars(Lidars& lidars);
-
-  Scalar calculateEntropy();
-
-  void clear();
-
- private:
-  float element_size_;
-  std::vector<std::map<std::tuple<int, int, int>, int>> voxel_pyramid_;
+  std::shared_ptr<Table> table_ptr_;
 };
 
 #endif  // LIDAR_ALIGN_ALIGNER_H_
