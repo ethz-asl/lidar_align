@@ -89,6 +89,7 @@ void Scan::setOdomTransform(const Odom& odom, const size_t start_idx,
     T_o0_ot_.push_back(
         odom.getOdomTransform(point_ts_us, start_idx, match_idx));
   }
+  std::cerr << T_o0_ot_.back().log().transpose() << std::endl;
   odom_transform_set_ = true;
 }
 

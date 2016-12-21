@@ -24,8 +24,8 @@ Scalar Aligner::kNNError(const pcl::KdTreeFLANN<Point>& kdtree,
   for (size_t idx = start_idx; idx < std::min(pointcloud.size(), end_idx);
        ++idx) {
     kdtree.nearestKSearch(pointcloud[idx], k, kdtree_idx, kdtree_dist);
-    for (const Scalar& x : kdtree_dist) {
-      error += std::min(x * x, max_distance);
+    for (const float& x : kdtree_dist) {
+      error += std::min(x, max_distance);
     }
   }
   return error;
@@ -45,7 +45,7 @@ Scalar Aligner::lidarOdomKNNError(const Pointcloud& pointcloud) const {
   std::vector<std::future<Scalar>> errors;
   for (size_t start_idx = 0; start_idx < pointcloud.size();
        start_idx += config_.knn_batch_size) {
-    size_t end_idx =
+    size_t end_idx = start_idx + 
         std::min(pointcloud.size() - start_idx, config_.knn_batch_size);
     errors.emplace_back(std::async(std::launch::async, Aligner::kNNError,
                                    kdtree, pointcloud, config_.knn_k,
@@ -57,6 +57,7 @@ Scalar Aligner::lidarOdomKNNError(const Pointcloud& pointcloud) const {
   for (std::future<Scalar>& error : errors) {
     total_error += error.get();
   }
+  //Scalar total_error = kNNError(kdtree, pointcloud, config_.knn_k, config_.knn_max_dist, 0, pointcloud.size());
 
   return total_error;
 }
