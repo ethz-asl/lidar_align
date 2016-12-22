@@ -16,7 +16,7 @@ void Aligner::updateTableFooter(const Scalar error) {
 
 Scalar Aligner::kNNError(const pcl::KdTreeFLANN<Point>& kdtree,
                          const Pointcloud& pointcloud, const size_t k,
-                         const float max_distance, const size_t start_idx,
+                         const float max_dist, const size_t start_idx,
                          const size_t end_idx) {
   std::vector<int> kdtree_idx(k);
   std::vector<float> kdtree_dist(k);
@@ -26,8 +26,7 @@ Scalar Aligner::kNNError(const pcl::KdTreeFLANN<Point>& kdtree,
        ++idx) {
     kdtree.nearestKSearch(pointcloud[idx], k, kdtree_idx, kdtree_dist);
     for (const float& x : kdtree_dist) {
-      // error += std::log(x + 1);
-      error += std::min(x, max_distance);
+      error += std::min(x, max_dist);
     }
   }
   return error;
@@ -359,7 +358,7 @@ void Aligner::lidarOdomJointTransform(const size_t num_params,
     offset += num_params;
   }
 
-  nlopt::opt opt(nlopt::LN_NELDERMEAD, num_lidar * num_params);
+  nlopt::opt opt(nlopt::LN_BOBYQA, num_lidar * num_params);
   opt.set_lower_bounds(lb);
   opt.set_upper_bounds(ub);
   opt.set_maxeval(2000);

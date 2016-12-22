@@ -54,7 +54,7 @@ class Scan {
     Config() {
       min_point_distance = 2;
       max_point_distance = 20;
-      keep_points_ratio = 0.05;
+      keep_points_ratio = 0.01;
     }
 
     Scalar min_point_distance;

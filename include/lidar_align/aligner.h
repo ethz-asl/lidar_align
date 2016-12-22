@@ -41,7 +41,7 @@ class Aligner {
 
   static Scalar kNNError(
       const pcl::KdTreeFLANN<Point>& kdtree, const Pointcloud& pointcloud,
-      const size_t k, const float max_distance, const size_t start_idx = 0,
+      const size_t k, const float max_dist, const size_t start_idx = 0,
       const size_t end_idx = std::numeric_limits<size_t>::max());
 
   Scalar lidarOdomKNNError(const Pointcloud& base_pointcloud,

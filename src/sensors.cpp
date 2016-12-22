@@ -71,7 +71,7 @@ Transform Odom::getOdomTransform(const Timestamp timestamp_us,
 
 Scan::Scan(const Pointcloud& in, const Config& config)
     : timestamp_us_(in.header.stamp), odom_transform_set_(false) {
-  std::default_random_engine generator;
+  std::default_random_engine generator(0);
   std::uniform_real_distribution<float> distribution(0, 1);
 
   for (Point point : in) {

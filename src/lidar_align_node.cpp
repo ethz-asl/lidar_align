@@ -61,7 +61,6 @@ int main(int argc, char** argv) {
   size_t scan_num = 0;
   for (const rosbag::MessageInstance& m : view) {
     if (m.getDataType() == std::string("sensor_msgs/PointCloud2")) {
-
       std::stringstream ss;
       ss << "Loading scan:       " << scan_num++;
       table_ptr->updateHeader(ss.str());
@@ -92,10 +91,16 @@ int main(int argc, char** argv) {
 
   table_ptr->updateHeader("Finding individual odometry-lidar transforms");
   for (Lidar& lidar : lidar_vector) {
+    table_ptr->updateHeader(
+        "Finding individual odometry-lidar transforms: (roll, pitch, yaw)");
     aligner.lidarOdomTransform(3, &lidar);
+    table_ptr->updateHeader(
+        "Finding individual odometry-lidar transforms: (x, y, roll, pitch, "
+        "yaw)");
     aligner.lidarOdomTransform(5, &lidar);
   }
-  table_ptr->updateHeader("Finding joint odometry-lidar transforms");
+  table_ptr->updateHeader(
+      "Finding joint odometry-lidar transforms: (x, y, z, roll, pitch, yaw)");
   aligner.lidarOdomJointTransform(6, &lidar_array);
 
   table_ptr->updateHeader("Saving data");
