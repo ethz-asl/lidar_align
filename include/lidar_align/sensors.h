@@ -4,10 +4,10 @@
 #include <random>
 
 #include <pcl/common/transforms.h>
+#include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <pcl/filters/statistical_outlier_removal.h>
 
 #include <kindr/minimal/quat-transformation.h>
 
@@ -18,7 +18,7 @@ typedef long long int Timestamp;
 
 typedef kindr::minimal::QuatTransformationTemplate<Scalar> Transform;
 typedef kindr::minimal::AngleAxisTemplate<Scalar> AngleAxis;
-typedef pcl::PointXYZI Point;
+typedef pcl::PointXYZ Point;
 typedef pcl::PointCloud<Point> Pointcloud;
 
 class OdomTformData {
@@ -49,7 +49,20 @@ class Odom {
 
 class Scan {
  public:
-  Scan(const Pointcloud& pointcloud);
+  struct Config {
+    // set default values
+    Config() {
+      min_point_distance = 2;
+      max_point_distance = 20;
+      keep_points_ratio = 0.05;
+    }
+
+    Scalar min_point_distance;
+    Scalar max_point_distance;
+    Scalar keep_points_ratio;
+  };
+
+  Scan(const Pointcloud& pointcloud, const Config& config = Config());
 
   void setOdomTransform(const Odom& odom, const size_t start_idx,
                         size_t* match_idx);
@@ -58,7 +71,8 @@ class Scan {
 
   const Pointcloud& getRawPointcloud() const;
 
-  void getTimeAlignedPointcloud(const Transform& T_o_l, Pointcloud* pointcloud) const;
+  void getTimeAlignedPointcloud(const Transform& T_o_l,
+                                Pointcloud* pointcloud) const;
 
  private:
   Timestamp timestamp_us_;  // signed to allow simpler comparisons
@@ -71,17 +85,17 @@ class Scan {
 
 class Lidar {
  public:
-  Lidar(const LidarId& lidar_id, const Scalar& min_point_dist,
-        const Scalar& max_point_dist);
+  Lidar(const LidarId& lidar_id = "Lidar");
 
   const size_t getNumberOfScans() const;
 
-  //note points are appended so any points in *pointcloud are preserved
+  // note points are appended so any points in *pointcloud are preserved
   void getCombinedPointcloud(Pointcloud* pointcloud) const;
 
   const LidarId& getId() const;
 
-  void addPointcloud(const Pointcloud& pointcloud);
+  void addPointcloud(const Pointcloud& pointcloud,
+                     const Scan::Config& config = Scan::Config());
 
   void setOdomOdomTransforms(const Odom& odom);
 
@@ -97,19 +111,14 @@ class Lidar {
   Transform T_o_l_;  // transform from lidar to odometry
 
   std::vector<Scan> scans_;
-
-  Scalar max_point_dist_;
-  Scalar min_point_dist_;
-
-  void filterPointcloud(const Pointcloud& in, Pointcloud* out);
 };
 
 class LidarArray {
  public:
-
   const size_t getNumberOfLidars() const;
 
-  void addPointcloud(const LidarId& lidar_id, const Pointcloud& pointcloud);
+  void addPointcloud(const LidarId& lidar_id, const Pointcloud& pointcloud,
+                     const Scan::Config& config = Scan::Config());
 
   void getCombinedPointcloud(Pointcloud* pointcloud) const;
 

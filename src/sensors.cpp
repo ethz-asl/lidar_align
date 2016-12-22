@@ -69,10 +69,24 @@ Transform Odom::getOdomTransform(const Timestamp timestamp_us,
   return data_[idx].getTransform() * Transform::exp(t_diff_ratio * diff_vector);
 }
 
-Scan::Scan(const Pointcloud& in)
-    : timestamp_us_(in.header.stamp),
-      raw_points_(in),
-      odom_transform_set_(false){};
+Scan::Scan(const Pointcloud& in, const Config& config)
+    : timestamp_us_(in.header.stamp), odom_transform_set_(false) {
+  std::default_random_engine generator;
+  std::uniform_real_distribution<float> distribution(0, 1);
+
+  for (Point point : in) {
+    if (distribution(generator) > config.keep_points_ratio) {
+      continue;
+    }
+    float sq_dist = point.x * point.x + point.y * point.y + point.z * point.z;
+    if (std::isfinite(sq_dist) &&
+        (sq_dist > (config.min_point_distance * config.min_point_distance)) &&
+        (sq_dist < (config.max_point_distance * config.max_point_distance))) {
+      raw_points_.push_back(point);
+    }
+  }
+  raw_points_.header = in.header;
+}
 
 void Scan::setOdomTransform(const Odom& odom, const size_t start_idx,
                             size_t* match_idx) {
@@ -84,7 +98,7 @@ void Scan::setOdomTransform(const Odom& odom, const size_t start_idx,
   size_t i = 0;
   for (Point point : raw_points_) {
     Timestamp point_ts_us =
-        timestamp_us_ + ((40000.0 * i) / raw_points_.size());
+        timestamp_us_;  // + ((40000.0 * i) / raw_points_.size());
     ++i;
     T_o0_ot_.push_back(
         odom.getOdomTransform(point_ts_us, start_idx, match_idx));
@@ -92,9 +106,10 @@ void Scan::setOdomTransform(const Odom& odom, const size_t start_idx,
   odom_transform_set_ = true;
 }
 
-const Transform& Scan::getOdomTransform() const{
-  if(!odom_transform_set_){
-    throw std::runtime_error("Attempted to get odom transform before it was set");
+const Transform& Scan::getOdomTransform() const {
+  if (!odom_transform_set_) {
+    throw std::runtime_error(
+        "Attempted to get odom transform before it was set");
   }
   return T_o0_ot_.front();
 }
@@ -111,49 +126,16 @@ void Scan::getTimeAlignedPointcloud(const Transform& T_o_l,
   }
 }
 
-Lidar::Lidar(const LidarId& lidar_id, const Scalar& min_point_dist,
-             const Scalar& max_point_dist)
-    : lidar_id_(lidar_id),
-      max_point_dist_(max_point_dist),
-      min_point_dist_(min_point_dist){};
+Lidar::Lidar(const LidarId& lidar_id)
+    : lidar_id_(lidar_id){};
 
 const size_t Lidar::getNumberOfScans() const { return scans_.size(); }
 
 const LidarId& Lidar::getId() const { return lidar_id_; }
 
-void Lidar::filterPointcloud(const Pointcloud& in, Pointcloud* out) {
-  out->clear();
-
-  std::default_random_engine generator;
-  std::uniform_real_distribution<float> distribution(0,1);
-
-  for (Point point : in) {
-    if(distribution(generator) > 0.003){
-      continue;
-    }
-    float sq_dist = point.x * point.x + point.y * point.y + point.z * point.z;
-    if (std::isfinite(sq_dist) &&
-        (sq_dist > (min_point_dist_ * min_point_dist_)) &&
-        (sq_dist < (max_point_dist_ * max_point_dist_))) {
-      out->push_back(point);
-    }
-  }
-  out->header = in.header;
-}
-
-void Lidar::addPointcloud(const Pointcloud& pointcloud) {
-  Pointcloud pointcloud_filtered;
-  filterPointcloud(pointcloud, &pointcloud_filtered);
-/*
-  pcl::StatisticalOutlierRemoval<Point> sor;
-  sor.setInputCloud(pointcloud_filtered.makeShared());
-  sor.setMeanK(10);
-  sor.setStddevMulThresh(1.0);
-  sor.filter(pointcloud_filtered);
-*/
-  // std::cerr << pointcloud_filtered.size() << " " << pointcloud.size() <<
-  // std::endl;
-  scans_.push_back(pointcloud_filtered);
+void Lidar::addPointcloud(const Pointcloud& pointcloud,
+                          const Scan::Config& config) {
+  scans_.emplace_back(pointcloud, config);
 }
 
 void Lidar::getCombinedPointcloud(Pointcloud* pointcloud) const {
@@ -182,11 +164,11 @@ void Lidar::setOdomLidarTransform(const Transform& T_o_l) { T_o_l_ = T_o_l; }
 
 const Transform& Lidar::getOdomLidarTransform() const { return T_o_l_; }
 
-const size_t LidarArray::getNumberOfLidars() const{
+const size_t LidarArray::getNumberOfLidars() const {
   return lidar_vector_.size();
 }
 
-const Lidar& LidarArray::getLidar(const LidarId& lidar_id) const{
+const Lidar& LidarArray::getLidar(const LidarId& lidar_id) const {
   return lidar_vector_[id_to_idx_map_.at(lidar_id)];
 }
 
@@ -203,12 +185,13 @@ bool LidarArray::hasAtleastNScans(const size_t n) const {
 }
 
 void LidarArray::addPointcloud(const LidarId& lidar_id,
-                               const Pointcloud& pointcloud) {
+                               const Pointcloud& pointcloud,
+                               const Scan::Config& config) {
   if (id_to_idx_map_.count(lidar_id) == 0) {
-    lidar_vector_.emplace_back(lidar_id, 2.0, 20.0);
+    lidar_vector_.emplace_back(lidar_id);
     id_to_idx_map_[lidar_id] = lidar_vector_.size() - 1;
   }
-  lidar_vector_[id_to_idx_map_.at(lidar_id)].addPointcloud(pointcloud);
+  lidar_vector_[id_to_idx_map_.at(lidar_id)].addPointcloud(pointcloud, config);
 }
 
 void LidarArray::getCombinedPointcloud(Pointcloud* pointcloud) const {

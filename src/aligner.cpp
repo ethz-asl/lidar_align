@@ -1,6 +1,7 @@
 #include "lidar_align/aligner.h"
 
-Aligner::Aligner(std::shared_ptr<Table> table_ptr) : table_ptr_(table_ptr){};
+Aligner::Aligner(const std::shared_ptr<Table>& table_ptr, const Config& config)
+    : table_ptr_(table_ptr), config_(config){};
 
 void Aligner::updateTableRow(const Lidar& lidar) {
   std::vector<double> vec = transformToVec(lidar.getOdomLidarTransform(), 6);
@@ -25,14 +26,15 @@ Scalar Aligner::kNNError(const pcl::KdTreeFLANN<Point>& kdtree,
        ++idx) {
     kdtree.nearestKSearch(pointcloud[idx], k, kdtree_idx, kdtree_dist);
     for (const float& x : kdtree_dist) {
-      //error += std::log(x + 1);
+      // error += std::log(x + 1);
       error += std::min(x, max_distance);
     }
   }
   return error;
 }
 
-Scalar Aligner::lidarOdomKNNError(const Pointcloud& pointcloud) const {
+Scalar Aligner::lidarOdomKNNError(const Pointcloud& base_pointcloud,
+                                  const Pointcloud& combined_pointcloud) const {
   // kill optimization if node stopped
   if (!ros::ok()) {
     throw std::runtime_error("ROS node died, exiting");
@@ -40,22 +42,29 @@ Scalar Aligner::lidarOdomKNNError(const Pointcloud& pointcloud) const {
 
   // shared_pointer needed by kdtree, no-op destructor to prevent it trying to
   // clean it up after use
-  Pointcloud::ConstPtr pointcloud_ptr(&pointcloud, [](const Pointcloud*) {});
+  Pointcloud::ConstPtr combined_pointcloud_ptr(&combined_pointcloud,
+                                               [](const Pointcloud*) {});
 
   pcl::KdTreeFLANN<Point> kdtree;
 
-  kdtree.setInputCloud(pointcloud_ptr);
+  kdtree.setInputCloud(combined_pointcloud_ptr);
+
+  size_t k = config_.knn_k;
+  // if searching own cloud add one to k as a point will always match to itself
+  if (&base_pointcloud == &combined_pointcloud) {
+    ++k;
+  }
 
   // small amount of threading here to take edge off of bottleneck
   // break knn lookup up into several smaller problems each running in their own
   // thread
   std::vector<std::future<Scalar>> errors;
-  for (size_t start_idx = 0; start_idx < pointcloud.size();
+  for (size_t start_idx = 0; start_idx < base_pointcloud.size();
        start_idx += config_.knn_batch_size) {
-    size_t end_idx = start_idx + std::min(pointcloud.size() - start_idx,
+    size_t end_idx = start_idx + std::min(base_pointcloud.size() - start_idx,
                                           config_.knn_batch_size);
     errors.emplace_back(std::async(std::launch::async, Aligner::kNNError,
-                                   kdtree, pointcloud, config_.knn_k+1,
+                                   kdtree, base_pointcloud, k,
                                    config_.knn_max_dist, start_idx, end_idx));
   }
 
@@ -71,54 +80,30 @@ Scalar Aligner::lidarOdomKNNError(const Pointcloud& pointcloud) const {
 Scalar Aligner::lidarOdomKNNError(const Lidar& lidar) const {
   Pointcloud pointcloud;
   lidar.getCombinedPointcloud(&pointcloud);
-  return lidarOdomKNNError(pointcloud);
+  return lidarOdomKNNError(pointcloud, pointcloud);
 }
 
 Scalar Aligner::lidarOdomKNNError(const LidarArray& lidar_array) const {
-  Scalar total_error = 0;
-
-  for (const Lidar& lidar : lidar_array.getLidarVector()) {
+  if (config_.joint_self_compare) {
     Pointcloud pointcloud;
-    Pointcloud base;
-    for (const Lidar& lidar2 : lidar_array.getLidarVector()) {
-      if (lidar.getId() != lidar2.getId()) {
-        lidar2.getCombinedPointcloud(&pointcloud);
+    lidar_array.getCombinedPointcloud(&pointcloud);
+    return lidarOdomKNNError(pointcloud, pointcloud);
+  }
+
+  Scalar total_error = 0;
+  for (const Lidar& base_lidar : lidar_array.getLidarVector()) {
+    Pointcloud base_pointcloud;
+    Pointcloud combined_pointcloud;
+
+    for (const Lidar& lidar : lidar_array.getLidarVector()) {
+      if (lidar.getId() == base_lidar.getId()) {
+        lidar.getCombinedPointcloud(&base_pointcloud);
       } else {
-        lidar2.getCombinedPointcloud(&base);
+        lidar.getCombinedPointcloud(&combined_pointcloud);
       }
     }
 
-    // kill optimization if node stopped
-    if (!ros::ok()) {
-      throw std::runtime_error("ROS node died, exiting");
-    }
-
-    // shared_pointer needed by kdtree, no-op destructor to prevent it trying to
-    // clean it up after use
-    Pointcloud::ConstPtr pointcloud_ptr(&pointcloud, [](const Pointcloud*) {});
-
-    pcl::KdTreeFLANN<Point> kdtree;
-
-    kdtree.setInputCloud(pointcloud_ptr);
-
-    // small amount of threading here to take edge off of bottleneck
-    // break knn lookup up into several smaller problems each running in their
-    // own
-    // thread
-    std::vector<std::future<Scalar>> errors;
-    for (size_t start_idx = 0; start_idx < base.size();
-         start_idx += config_.knn_batch_size) {
-      size_t end_idx =
-          start_idx + std::min(base.size() - start_idx, config_.knn_batch_size);
-      errors.emplace_back(std::async(std::launch::async, Aligner::kNNError,
-                                     kdtree, base, config_.knn_k,
-                                     config_.knn_max_dist, start_idx, end_idx));
-    }
-
-    // wait for threads to finish and grab results
-    for (std::future<Scalar>& error : errors) {
-      total_error += error.get();
-    }
+    total_error += lidarOdomKNNError(combined_pointcloud, base_pointcloud);
   }
 
   return total_error;
@@ -127,31 +112,45 @@ Scalar Aligner::lidarOdomKNNError(const LidarArray& lidar_array) const {
 Transform Aligner::vecToTransform(const std::vector<double>& vec,
                                   const Transform& inital_T) {
   Transform::Vector6 tf_vec = inital_T.log();
-  size_t i = 0;
 
   // 1 = rz
   // 2 = x,y
-  // 3 = x,y,rz
+  // 3 = rx,ry,rz
   // 5 = x,y,rx,ry,rz
   // 6 = x,y,z,rx,ry,rz
 
-  if (vec.size() > 6) {
-    throw std::runtime_error("Vector must be of size 6 or less");
+  switch (vec.size()) {
+    case 1:
+      tf_vec[5] = vec[0];
+      break;
+    case 2:
+      tf_vec[0] = vec[0];
+      tf_vec[1] = vec[1];
+      break;
+    case 3:
+      tf_vec[3] = vec[0];
+      tf_vec[4] = vec[1];
+      tf_vec[5] = vec[2];
+      break;
+    case 5:
+      tf_vec[0] = vec[0];
+      tf_vec[1] = vec[1];
+      tf_vec[3] = vec[2];
+      tf_vec[4] = vec[3];
+      tf_vec[5] = vec[4];
+      break;
+    case 6:
+      tf_vec[0] = vec[0];
+      tf_vec[1] = vec[1];
+      tf_vec[2] = vec[2];
+      tf_vec[3] = vec[3];
+      tf_vec[4] = vec[4];
+      tf_vec[5] = vec[5];
+      break;
+    default:
+      throw std::runtime_error("Vector must be of size 1, 2, 3, 5 or 6");
   }
-  if (vec.size() > 1) {
-    tf_vec[0] = vec[i++];
-    tf_vec[1] = vec[i++];
-  }
-  if (vec.size() == 6) {
-    tf_vec[2] = vec[i++];
-  }
-  if (vec.size() > 3) {
-    tf_vec[3] = vec[i++];
-    tf_vec[4] = vec[i++];
-  }
-  if (vec.size() != 2) {
-    tf_vec[5] = vec[i++];
-  }
+
   return Transform::exp(tf_vec);
 }
 
@@ -162,26 +161,84 @@ std::vector<double> Aligner::transformToVec(const Transform& T,
 
   // 1 = rz
   // 2 = x,y
-  // 3 = x,y,rz
+  // 3 = rx,ry,rz
   // 5 = x,y,rx,ry,rz
   // 6 = x,y,z,rx,ry,rz
 
-  if (vec_length > 6) {
-    throw std::runtime_error("Vector must be of size 6 or less");
+  switch (vec_length) {
+    case 1:
+      out_vec.push_back(log_vec[0]);
+      break;
+    case 2:
+      out_vec.push_back(log_vec[0]);
+      out_vec.push_back(log_vec[1]);
+      break;
+    case 3:
+      out_vec.push_back(log_vec[3]);
+      out_vec.push_back(log_vec[4]);
+      out_vec.push_back(log_vec[5]);
+      break;
+    case 5:
+      out_vec.push_back(log_vec[0]);
+      out_vec.push_back(log_vec[1]);
+      out_vec.push_back(log_vec[3]);
+      out_vec.push_back(log_vec[4]);
+      out_vec.push_back(log_vec[5]);
+      break;
+    case 6:
+      out_vec.push_back(log_vec[0]);
+      out_vec.push_back(log_vec[1]);
+      out_vec.push_back(log_vec[2]);
+      out_vec.push_back(log_vec[3]);
+      out_vec.push_back(log_vec[4]);
+      out_vec.push_back(log_vec[5]);
+      break;
+    default:
+      throw std::runtime_error("Vector must be of size 1, 2, 3, 5 or 6");
   }
-  if (vec_length > 1) {
-    out_vec.push_back(log_vec[0]);
-    out_vec.push_back(log_vec[1]);
-  }
-  if (vec_length == 6) {
-    out_vec.push_back(log_vec[2]);
-  }
-  if (vec_length > 3) {
-    out_vec.push_back(log_vec[3]);
-    out_vec.push_back(log_vec[4]);
-  }
-  if (vec_length != 2) {
-    out_vec.push_back(log_vec[5]);
+  return out_vec;
+}
+
+std::vector<double> Aligner::createRangeVec(const std::vector<double>& full_vec,
+                                            size_t vec_length) {
+  // 1 = rz
+  // 2 = x,y
+  // 3 = rx,ry,rz
+  // 5 = x,y,rx,ry,rz
+  // 6 = x,y,z,rx,ry,rz
+
+  std::vector<double> out_vec;
+
+  switch (vec_length) {
+    case 1:
+      out_vec.push_back(full_vec[0]);
+      break;
+    case 2:
+      out_vec.push_back(full_vec[0]);
+      out_vec.push_back(full_vec[1]);
+      break;
+    case 3:
+      out_vec.push_back(full_vec[3]);
+      out_vec.push_back(full_vec[4]);
+      out_vec.push_back(full_vec[5]);
+      break;
+    case 5:
+      out_vec.push_back(full_vec[0]);
+      out_vec.push_back(full_vec[1]);
+      out_vec.push_back(full_vec[3]);
+      out_vec.push_back(full_vec[4]);
+      out_vec.push_back(full_vec[5]);
+      break;
+    case 6:
+      out_vec.push_back(full_vec[0]);
+      out_vec.push_back(full_vec[1]);
+      out_vec.push_back(full_vec[2]);
+      out_vec.push_back(full_vec[3]);
+      out_vec.push_back(full_vec[4]);
+      out_vec.push_back(full_vec[5]);
+      break;
+    default:
+      throw std::runtime_error("Vector must be of size 1, 2, 3, 5 or 6");
   }
   return out_vec;
 }
@@ -246,22 +303,9 @@ void Aligner::lidarOdomTransform(const size_t num_params, Lidar* lidar_ptr) {
   std::vector<double> inital_guess =
       transformToVec(lidar_ptr->getOdomLidarTransform(), num_params);
 
-  // check range of 10 meters + within 10 degrees of horizontal
-  std::vector<double> range;
-  if (num_params > 1) {
-    range.push_back(10);
-    range.push_back(10);
-  }
-  if (num_params == 6) {
-    range.push_back(10);
-  }
-  if (num_params > 3) {
-    range.push_back(0.17);
-    range.push_back(0.17);
-  }
-  if (num_params != 2) {
-    range.push_back(3.2);
-  }
+  // check range of 10 meters and all angles
+  std::vector<double> full_range = {10, 10, 10, 3.15, 3.15, 3.15};
+  std::vector<double> range = createRangeVec(full_range, num_params);
 
   std::vector<double> lb(num_params);
   std::vector<double> ub(num_params);
@@ -304,21 +348,8 @@ void Aligner::lidarOdomJointTransform(const size_t num_params,
       inital_guess[offset + j] = temp[j];
     }
 
-    std::vector<double> range;
-    if (num_params > 1) {
-      range.push_back(2);
-      range.push_back(2);
-    }
-    if (num_params == 6) {
-      range.push_back(1);
-    }
-    if (num_params > 3) {
-      range.push_back(0.1);
-      range.push_back(0.1);
-    }
-    if (num_params != 2) {
-      range.push_back(0.2);
-    }
+    std::vector<double> full_range = {2, 2, 2, 0.2, 0.2, 0.2};
+    std::vector<double> range = createRangeVec(full_range, num_params);
 
     for (size_t j = 0; j < num_params; ++j) {
       lb[offset + j] = inital_guess[offset + j] - range[j];

@@ -22,26 +22,6 @@
 // number of frames to take when calculating rough 2D alignment
 constexpr int kDefaultUseNScans = 100000000;
 
-// this entire function is an ugly hack that needs deleting
-bool topicToLidarId(const std::string& topic_name, LidarId* lidar_id) {
-
-  *lidar_id = topic_name;
-
-  /*
-  static std::map<std::string, size_t> sub_map;
-  if (sub_map.count(topic_name) == 0) {
-    sub_map[topic_name] = 1;
-    return false;
-  } else if (sub_map.at(topic_name) > 20) {
-    sub_map[topic_name] = 0;
-  } else {
-    sub_map[topic_name]++;
-    return false;
-  }*/
-
-  return true;
-}
-
 int main(int argc, char** argv) {
   ros::init(argc, argv, "lidar_align");
 
@@ -72,21 +52,24 @@ int main(int argc, char** argv) {
   column_names.push_back("ry");
   column_names.push_back("rz");
 
-  std::shared_ptr<Table> table_ptr = std::make_shared<Table>(column_names, 20, 10);
-  table_ptr->updateHeader("Loading data");
+  std::shared_ptr<Table> table_ptr =
+      std::make_shared<Table>(column_names, 20, 10);
 
   LidarArray lidar_array;
   Odom odom;
 
+  size_t scan_num = 0;
   for (const rosbag::MessageInstance& m : view) {
     if (m.getDataType() == std::string("sensor_msgs/PointCloud2")) {
-      pcl::PointCloud<pcl::PointXYZI> pointcloud;
+
+      std::stringstream ss;
+      ss << "Loading scan:       " << scan_num++;
+      table_ptr->updateHeader(ss.str());
+
+      Pointcloud pointcloud;
       pcl::fromROSMsg(*(m.instantiate<sensor_msgs::PointCloud2>()), pointcloud);
 
-      LidarId lidar_id;
-      if (topicToLidarId(m.getTopic(), &lidar_id)) {
-        lidar_array.addPointcloud(lidar_id, pointcloud);
-      }
+      lidar_array.addPointcloud(m.getTopic(), pointcloud);
 
       if (lidar_array.hasAtleastNScans(use_n_scans)) {
         break;
@@ -107,10 +90,9 @@ int main(int argc, char** argv) {
 
   Aligner aligner(table_ptr);
 
-
   table_ptr->updateHeader("Finding individual odometry-lidar transforms");
   for (Lidar& lidar : lidar_vector) {
-    aligner.lidarOdomTransform(1, &lidar);
+    aligner.lidarOdomTransform(3, &lidar);
     aligner.lidarOdomTransform(5, &lidar);
   }
   table_ptr->updateHeader("Finding joint odometry-lidar transforms");
@@ -121,27 +103,26 @@ int main(int argc, char** argv) {
   bag_out.open("/home/z/datasets/ibeo/out.bag", rosbag::bagmode::Write);
 
   for (const rosbag::MessageInstance& m : view) {
-    if(!ros::ok()){
+    if (!ros::ok()) {
       break;
     }
     if (m.getDataType() == std::string("sensor_msgs/PointCloud2")) {
-      pcl::PointCloud<pcl::PointXYZI> pointcloud;
+      Pointcloud pointcloud;
       pcl::fromROSMsg(*(m.instantiate<sensor_msgs::PointCloud2>()), pointcloud);
 
       bag_out.write(m.getTopic(), m.getTime(), pointcloud);
 
-      LidarId lidar_id;
-      topicToLidarId(m.getTopic(), &lidar_id);
-
       geometry_msgs::TransformStamped transform_msg;
       transform_msg.header.frame_id = "odom";
       transform_msg.header.stamp = m.getTime();
-      transform_msg.child_frame_id = lidar_id.substr(0, lidar_id.find("/", 0));
+      transform_msg.child_frame_id =
+          m.getTopic().substr(0, m.getTopic().find("/", 0));
 
       tf::tfMessage tf_msg;
-      tf::transformKindrToMsg(
-          lidar_array.getLidar(lidar_id).getOdomLidarTransform().cast<double>(),
-          &transform_msg.transform);
+      tf::transformKindrToMsg(lidar_array.getLidar(m.getTopic())
+                                  .getOdomLidarTransform()
+                                  .cast<double>(),
+                              &transform_msg.transform);
       tf_msg.transforms.push_back(transform_msg);
       bag_out.write("/tf", m.getTime(), tf_msg);
     }
