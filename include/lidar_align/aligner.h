@@ -15,7 +15,7 @@ class Aligner {
     // set default values
     Config() {
       knn_batch_size = 5000;
-      knn_k = 1;
+      knn_k = 5;
       knn_max_dist = 0.1;
       joint_self_compare = false;
     }

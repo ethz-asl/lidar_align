@@ -41,6 +41,10 @@ void Odom::addRawOdomData(const Timestamp& timestamp_us,
   prev_timestamp_us = timestamp_us;
 }
 
+void Odom::addTransformData(const Timestamp& timestamp_us, const Transform& T) {
+  data_.emplace_back(timestamp_us, T);
+}
+
 Transform Odom::getOdomTransform(const Timestamp timestamp_us,
                                  const size_t start_idx,
                                  size_t* match_idx) const {
@@ -71,10 +75,11 @@ Transform Odom::getOdomTransform(const Timestamp timestamp_us,
 
 Scan::Scan(const Pointcloud& in, const Config& config)
     : timestamp_us_(in.header.stamp), odom_transform_set_(false) {
-  std::default_random_engine generator(0);
+  std::default_random_engine generator(in.header.stamp);
   std::uniform_real_distribution<float> distribution(0, 1);
 
-  for (Point point : in) {
+  for (const Point& point : in) {
+    //break;
     if (distribution(generator) > config.keep_points_ratio) {
       continue;
     }
@@ -92,14 +97,15 @@ void Scan::setOdomTransform(const Odom& odom, const size_t start_idx,
                             size_t* match_idx) {
   T_o0_ot_.clear();
 
-  // MASSIVE HACK!!!!
-  // pointcloud timestamps are complete crap so we assume they are evenly
-  // distributed in time and that one scan lasts 40000us
   size_t i = 0;
   for (Point point : raw_points_) {
+    // NOTE: This static cast is really really important. Without it the
+    // timestamp_us will be cast to a float, as it is a very large number it
+    // will have quite low precision and when it is cast back to a long int will
+    // be a very different value (about 2 to 3 million lower in some quick
+    // tests). This difference will then break everything.
     Timestamp point_ts_us =
-        timestamp_us_;  // + ((40000.0 * i) / raw_points_.size());
-    ++i;
+        timestamp_us_ + static_cast<Timestamp>(std::round(point.intensity));
     T_o0_ot_.push_back(
         odom.getOdomTransform(point_ts_us, start_idx, match_idx));
   }
@@ -126,8 +132,7 @@ void Scan::getTimeAlignedPointcloud(const Transform& T_o_l,
   }
 }
 
-Lidar::Lidar(const LidarId& lidar_id)
-    : lidar_id_(lidar_id){};
+Lidar::Lidar(const LidarId& lidar_id) : lidar_id_(lidar_id){};
 
 const size_t Lidar::getNumberOfScans() const { return scans_.size(); }
 
@@ -176,7 +181,7 @@ bool LidarArray::hasAtleastNScans(const size_t n) const {
   if (lidar_vector_.empty()) {
     return false;
   }
-  for (const Lidar lidar : lidar_vector_) {
+  for (const Lidar& lidar : lidar_vector_) {
     if (n > lidar.getNumberOfScans()) {
       return false;
     }

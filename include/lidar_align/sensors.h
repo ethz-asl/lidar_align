@@ -18,7 +18,7 @@ typedef long long int Timestamp;
 
 typedef kindr::minimal::QuatTransformationTemplate<Scalar> Transform;
 typedef kindr::minimal::AngleAxisTemplate<Scalar> AngleAxis;
-typedef pcl::PointXYZ Point;
+typedef pcl::PointXYZI Point;
 typedef pcl::PointCloud<Point> Pointcloud;
 
 class OdomTformData {
@@ -38,6 +38,9 @@ class Odom {
   void addRawOdomData(const Timestamp& timestamp_us,
                       const Scalar& linear_velocity,
                       const Scalar& angular_velocity);
+
+  void addTransformData(const Timestamp& timestamp_us,
+                        const Transform& transform);
 
   Transform getOdomTransform(const Timestamp timestamp_us,
                              const size_t start_idx = 0,

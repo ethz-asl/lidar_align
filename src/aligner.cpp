@@ -26,7 +26,7 @@ Scalar Aligner::kNNError(const pcl::KdTreeFLANN<Point>& kdtree,
        ++idx) {
     kdtree.nearestKSearch(pointcloud[idx], k, kdtree_idx, kdtree_dist);
     for (const float& x : kdtree_dist) {
-      error += std::min(x, max_dist);
+      error += std::tanh(x/max_dist);
     }
   }
   return error;
@@ -83,7 +83,7 @@ Scalar Aligner::lidarOdomKNNError(const Lidar& lidar) const {
 }
 
 Scalar Aligner::lidarOdomKNNError(const LidarArray& lidar_array) const {
-  if (config_.joint_self_compare) {
+  if (config_.joint_self_compare || (lidar_array.getNumberOfLidars() == 1)) {
     Pointcloud pointcloud;
     lidar_array.getCombinedPointcloud(&pointcloud);
     return lidarOdomKNNError(pointcloud, pointcloud);
@@ -303,7 +303,7 @@ void Aligner::lidarOdomTransform(const size_t num_params, Lidar* lidar_ptr) {
       transformToVec(lidar_ptr->getOdomLidarTransform(), num_params);
 
   // check range of 10 meters and all angles
-  std::vector<double> full_range = {10, 10, 10, 3.15, 3.15, 3.15};
+  std::vector<double> full_range = {10, 10, 10, 0.5, 0.5, 3.15};
   std::vector<double> range = createRangeVec(full_range, num_params);
 
   std::vector<double> lb(num_params);
@@ -361,8 +361,8 @@ void Aligner::lidarOdomJointTransform(const size_t num_params,
   nlopt::opt opt(nlopt::LN_BOBYQA, num_lidar * num_params);
   opt.set_lower_bounds(lb);
   opt.set_upper_bounds(ub);
-  opt.set_maxeval(2000);
-  opt.set_xtol_abs(0.001);
+  opt.set_maxeval(5000);
+  opt.set_xtol_abs(0.00000001);
   opt.set_min_objective(LidarOdomJointMinimizer, &data);
   double minf;
   nlopt::result result = opt.optimize(inital_guess, minf);
