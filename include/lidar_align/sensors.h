@@ -46,6 +46,8 @@ class Odom {
                              const size_t start_idx = 0,
                              size_t* match_idx = nullptr) const;
 
+  bool getFinalAngularVeloctiy(Scalar* angular_velocity) const;
+
  private:
   std::vector<OdomTformData> data_;
 };

@@ -73,13 +73,31 @@ Transform Odom::getOdomTransform(const Timestamp timestamp_us,
   return data_[idx].getTransform() * Transform::exp(t_diff_ratio * diff_vector);
 }
 
+bool Odom::getFinalAngularVeloctiy(Scalar* angular_velocity) const {
+  if (data_.size() < 2) {
+    return false;
+  }
+
+  const OdomTformData& last_odom = data_.back();
+  const OdomTformData& second_to_last_odom = data_.rbegin()[1];
+
+  Scalar angle_diff = last_odom.getTransform().getRotation().getDisparityAngle(
+      second_to_last_odom.getTransform().getRotation());
+  Scalar time_diff = static_cast<Scalar>(last_odom.getTimestamp() -
+                                         second_to_last_odom.getTimestamp()) /
+                     1000000.0;
+  ;
+  *angular_velocity = angle_diff / time_diff;
+  return true;
+}
+
 Scan::Scan(const Pointcloud& in, const Config& config)
     : timestamp_us_(in.header.stamp), odom_transform_set_(false) {
   std::default_random_engine generator(in.header.stamp);
   std::uniform_real_distribution<float> distribution(0, 1);
 
   for (const Point& point : in) {
-    //break;
+    // break;
     if (distribution(generator) > config.keep_points_ratio) {
       continue;
     }
@@ -101,7 +119,8 @@ void Scan::setOdomTransform(const Odom& odom, const size_t start_idx,
   for (Point point : raw_points_) {
     // NOTE: This static cast is really really important. Without it the
     // timestamp_us will be cast to a float, as it is a very large number it
-    // will have quite low precision and when it is cast back to a long int will
+    // will have quite low precision and when it is cast back to a long int
+    // will
     // be a very different value (about 2 to 3 million lower in some quick
     // tests). This difference will then break everything.
     Timestamp point_ts_us =

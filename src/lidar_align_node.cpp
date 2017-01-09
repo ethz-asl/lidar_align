@@ -24,6 +24,7 @@
 
 // number of frames to take when calculating rough 2D alignment
 constexpr int kDefaultUseNScans = 100000000;
+constexpr float kDefaultMininumAngularVelocity = 0.0;
 
 int main(int argc, char** argv) {
   ros::init(argc, argv, "lidar_align");
@@ -38,6 +39,10 @@ int main(int argc, char** argv) {
 
   int use_n_scans;
   nh_private.param("use_n_scans", use_n_scans, kDefaultUseNScans);
+
+  float minium_angular_velocity;
+  nh_private.param("minium_angular_velocity", minium_angular_velocity,
+                   kDefaultMininumAngularVelocity);
 
   rosbag::Bag bag;
   bag.open(input_bag_path, rosbag::bagmode::Read);
@@ -71,10 +76,18 @@ int main(int argc, char** argv) {
   Odom odom;
 
   size_t scan_num = 0;
+  size_t reject_num = 0;
   for (const rosbag::MessageInstance& m : view) {
     if (m.getDataType() == std::string("sensor_msgs/PointCloud2")) {
+      Scalar angular_velocity;
+      if (!odom.getFinalAngularVeloctiy(&angular_velocity) ||
+          (angular_velocity < minium_angular_velocity)) {
+        reject_num++;
+        continue;
+      }
+
       std::stringstream ss;
-      ss << "Loading scan:       " << scan_num++;
+      ss << "Loading scan:       " << scan_num++ << " Rejected:         " << reject_num;
       table_ptr->updateHeader(ss.str());
 
       Pointcloud pointcloud;
@@ -102,7 +115,7 @@ int main(int argc, char** argv) {
     }
   }
 
-  table_ptr->updateHeader("Interpolating odometry data");
+  //table_ptr->updateHeader("Interpolating odometry data");
   std::vector<Lidar>& lidar_vector = lidar_array.getLidarVector();
   for (Lidar& lidar : lidar_vector) {
     lidar.setOdomOdomTransforms(odom);
@@ -122,14 +135,14 @@ int main(int argc, char** argv) {
 
   Aligner aligner(table_ptr, aligner_config);
 
-  table_ptr->updateHeader("Finding individual odometry-lidar transforms");
+  //table_ptr->updateHeader("Finding individual odometry-lidar transforms");
   for (Lidar& lidar : lidar_vector) {
-    table_ptr->updateHeader(
-        "Finding individual odometry-lidar transforms: (roll, pitch, yaw)");
+    //table_ptr->updateHeader(
+    //    "Finding individual odometry-lidar transforms: (roll, pitch, yaw)");
     aligner.lidarOdomTransform(3, &lidar);
-    table_ptr->updateHeader(
-        "Finding individual odometry-lidar transforms: (x, y, roll, pitch, "
-        "yaw)");
+    //table_ptr->updateHeader(
+    //    "Finding individual odometry-lidar transforms: (x, y, roll, pitch, "
+    //    "yaw)");
     aligner.lidarOdomTransform(5, &lidar);
   }
 
