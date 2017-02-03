@@ -26,7 +26,7 @@ Scalar Aligner::kNNError(const pcl::KdTreeFLANN<Point>& kdtree,
        ++idx) {
     kdtree.nearestKSearch(pointcloud[idx], k, kdtree_idx, kdtree_dist);
     for (const float& x : kdtree_dist) {
-      error += std::tanh(x/max_dist);
+      error += std::tanh(x / max_dist);
     }
   }
   return error;
@@ -82,7 +82,7 @@ Scalar Aligner::lidarOdomKNNError(const Lidar& lidar) const {
   return lidarOdomKNNError(pointcloud, pointcloud);
 }
 
-Scalar Aligner::lidarOdomKNNError(const LidarArray& lidar_array) const {
+/*Scalar Aligner::lidarOdomKNNError(const LidarArray& lidar_array) const {
   if (config_.joint_self_compare || (lidar_array.getNumberOfLidars() == 1)) {
     Pointcloud pointcloud;
     lidar_array.getCombinedPointcloud(&pointcloud);
@@ -103,6 +103,28 @@ Scalar Aligner::lidarOdomKNNError(const LidarArray& lidar_array) const {
     }
 
     total_error += lidarOdomKNNError(combined_pointcloud, base_pointcloud);
+  }
+
+  return total_error;
+}*/
+
+Scalar Aligner::lidarOdomKNNError(const LidarArray& lidar_array) const {
+  /*if (config_.joint_self_compare || (lidar_array.getNumberOfLidars() == 1)) {
+    Pointcloud pointcloud;
+    lidar_array.getCombinedPointcloud(&pointcloud);
+    return lidarOdomKNNError(pointcloud, pointcloud);
+  }*/
+
+  Scalar total_error = 0;
+  for (const Lidar& base_lidar : lidar_array.getLidarVector()) {
+    Pointcloud base_pointcloud;
+    base_lidar.getCombinedPointcloud(&base_pointcloud);
+
+    for (const Lidar& lidar : lidar_array.getLidarVector()) {
+      Pointcloud combined_pointcloud;
+      lidar.getCombinedPointcloud(&combined_pointcloud);
+      total_error += lidarOdomKNNError(combined_pointcloud, base_pointcloud);
+    }
   }
 
   return total_error;
@@ -303,7 +325,7 @@ void Aligner::lidarOdomTransform(const size_t num_params, Lidar* lidar_ptr) {
       transformToVec(lidar_ptr->getOdomLidarTransform(), num_params);
 
   // check range of 10 meters and all angles
-  std::vector<double> full_range = {10, 10, 10, 0.5, 0.5, 3.15};
+  std::vector<double> full_range = {10, 10, 10, 3.15, 3.15, 3.15};
   std::vector<double> range = createRangeVec(full_range, num_params);
 
   std::vector<double> lb(num_params);

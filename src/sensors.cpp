@@ -28,6 +28,10 @@ void Odom::addRawOdomData(const Timestamp& timestamp_us,
       throw std::runtime_error(
           "New odom reading occured earlier then previous reading");
     }
+    if (!std::isfinite(average_linear_velocity) ||
+        !std::isfinite(average_angular_velocity)) {
+      throw std::runtime_error("Non-finite velocity values given");
+    }
 
     T = T * Transform(
                 Transform::Rotation(AngleAxis(
@@ -67,10 +71,14 @@ Transform Odom::getOdomTransform(const Timestamp timestamp_us,
       static_cast<double>(timestamp_us - data_[idx].getTimestamp()) /
       static_cast<double>(data_[idx + 1].getTimestamp() -
                           data_[idx].getTimestamp());
+
   Transform::Vector6 diff_vector =
       (data_[idx].getTransform().inverse() * data_[idx + 1].getTransform())
           .log();
-  return data_[idx].getTransform() * Transform::exp(t_diff_ratio * diff_vector);
+  Transform out =
+      data_[idx].getTransform() * Transform::exp(t_diff_ratio * diff_vector);
+
+  return out;
 }
 
 bool Odom::getFinalAngularVeloctiy(Scalar* angular_velocity) const {
@@ -96,15 +104,44 @@ Scan::Scan(const Pointcloud& in, const Config& config)
   std::default_random_engine generator(in.header.stamp);
   std::uniform_real_distribution<float> distribution(0, 1);
 
-  for (const Point& point : in) {
-    // break;
+  Pointcloud::ConstPtr in_ptr(&in, [](const Pointcloud*) {});
+
+  pcl::NormalEstimation<Point, pcl::Normal> ne;
+  ne.setInputCloud (in_ptr);
+
+  // Create an empty kdtree representation, and pass it to the normal estimation object.
+  // Its content will be filled inside the object, based on the given input dataset (as no other search surface is given).
+  pcl::search::KdTree<Point>::Ptr tree (new pcl::search::KdTree<Point>());
+  ne.setSearchMethod (tree);
+
+  pcl::PointCloud<pcl::Normal>::Ptr cloud_normals (new pcl::PointCloud<pcl::Normal>);
+
+  // Use all neighbors in a sphere of radius 3cm
+  ne.setKSearch (10);
+
+  // Compute the features
+  ne.compute (*cloud_normals);
+
+  for (size_t idx = 0; idx < in.size(); ++idx) {
+
+    const Point& point = in[idx];
+    const pcl::Normal& point_normals = (*cloud_normals)[idx];
+
+    if(point_normals.curvature < config.min_point_curvature){
+      continue;
+    }
+
+    //std::cerr << point_normals.curvature << std::endl;
+
     if (distribution(generator) > config.keep_points_ratio) {
       continue;
     }
+
     float sq_dist = point.x * point.x + point.y * point.y + point.z * point.z;
     if (std::isfinite(sq_dist) &&
         (sq_dist > (config.min_point_distance * config.min_point_distance)) &&
-        (sq_dist < (config.max_point_distance * config.max_point_distance))) {
+        (sq_dist < (config.max_point_distance * config.max_point_distance))) {     
+
       raw_points_.push_back(point);
     }
   }

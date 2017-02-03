@@ -25,6 +25,7 @@
 // number of frames to take when calculating rough 2D alignment
 constexpr int kDefaultUseNScans = 100000000;
 constexpr float kDefaultMininumAngularVelocity = 0.0;
+constexpr float kDefaultMininumLinearVelocity = 0.01;
 
 int main(int argc, char** argv) {
   ros::init(argc, argv, "lidar_align");
@@ -43,6 +44,9 @@ int main(int argc, char** argv) {
   float minium_angular_velocity;
   nh_private.param("minium_angular_velocity", minium_angular_velocity,
                    kDefaultMininumAngularVelocity);
+  float minium_linear_velocity;
+  nh_private.param("minium_linear_velocity", minium_linear_velocity,
+                   kDefaultMininumLinearVelocity);
 
   rosbag::Bag bag;
   bag.open(input_bag_path, rosbag::bagmode::Read);
@@ -71,23 +75,27 @@ int main(int argc, char** argv) {
                    scan_config.max_point_distance);
   nh_private.param("keep_points_ratio", scan_config.keep_points_ratio,
                    scan_config.keep_points_ratio);
+  nh_private.param("min_point_curvature", scan_config.min_point_curvature,
+                   scan_config.min_point_curvature);
 
   LidarArray lidar_array;
   Odom odom;
 
   size_t scan_num = 0;
   size_t reject_num = 0;
+  Scalar angular_velocity = 0;
+  Scalar linear_velocity = 0;
   for (const rosbag::MessageInstance& m : view) {
     if (m.getDataType() == std::string("sensor_msgs/PointCloud2")) {
-      Scalar angular_velocity;
-      if (!odom.getFinalAngularVeloctiy(&angular_velocity) ||
+      if ((linear_velocity < minium_linear_velocity) ||
           (angular_velocity < minium_angular_velocity)) {
         reject_num++;
         continue;
       }
 
       std::stringstream ss;
-      ss << "Loading scan:       " << scan_num++ << " Rejected:         " << reject_num;
+      ss << "Loading scan:       " << scan_num++
+         << " Rejected:         " << reject_num;
       table_ptr->updateHeader(ss.str());
 
       Pointcloud pointcloud;
@@ -101,8 +109,15 @@ int main(int argc, char** argv) {
     } else if (m.getDataType() == std::string("geometry_msgs/TwistStamped")) {
       geometry_msgs::TwistStamped twist_msg =
           *(m.instantiate<geometry_msgs::TwistStamped>());
-      odom.addRawOdomData((twist_msg.header.stamp.toSec() * 1000000),
-                          twist_msg.twist.linear.x, twist_msg.twist.angular.z);
+      try {
+        odom.addRawOdomData((twist_msg.header.stamp.toSec() * 1000000),
+                            twist_msg.twist.linear.x,
+                            twist_msg.twist.angular.z);
+      } catch (const std::runtime_error& e) {
+      }
+
+      angular_velocity = std::abs(twist_msg.twist.angular.z);
+      linear_velocity = std::abs(twist_msg.twist.linear.x);
     } else if (m.getDataType() ==
                std::string("geometry_msgs/TransformStamped")) {
       geometry_msgs::TransformStamped transform_msg =
@@ -115,7 +130,12 @@ int main(int argc, char** argv) {
     }
   }
 
-  //table_ptr->updateHeader("Interpolating odometry data");
+  if (!lidar_array.hasAtleastNScans(1)) {
+    ROS_FATAL("No data loaded, exiting");
+    exit(0);
+  }
+
+  table_ptr->updateHeader("Interpolating odometry data");
   std::vector<Lidar>& lidar_vector = lidar_array.getLidarVector();
   for (Lidar& lidar : lidar_vector) {
     lidar.setOdomOdomTransforms(odom);
@@ -135,15 +155,19 @@ int main(int argc, char** argv) {
 
   Aligner aligner(table_ptr, aligner_config);
 
-  //table_ptr->updateHeader("Finding individual odometry-lidar transforms");
+  table_ptr->updateHeader("Finding individual odometry-lidar transforms");
   for (Lidar& lidar : lidar_vector) {
-    //table_ptr->updateHeader(
-    //    "Finding individual odometry-lidar transforms: (roll, pitch, yaw)");
+    table_ptr->updateHeader(
+        "Finding individual odometry-lidar transforms: (roll, pitch, yaw)");
     aligner.lidarOdomTransform(3, &lidar);
-    //table_ptr->updateHeader(
-    //    "Finding individual odometry-lidar transforms: (x, y, roll, pitch, "
-    //    "yaw)");
+    table_ptr->updateHeader(
+        "Finding individual odometry-lidar transforms: (x, y, roll, pitch, "
+        "yaw)");
     aligner.lidarOdomTransform(5, &lidar);
+
+    std::string s = lidar.getId();
+    std::replace(s.begin(), s.end(), '/', '_');
+    lidar.saveCombinedPointcloud("/home/z/Desktop/" + s + ".ply");
   }
 
   table_ptr->updateHeader(
@@ -168,6 +192,7 @@ int main(int argc, char** argv) {
 
     if (m.getDataType() == std::string("sensor_msgs/PointCloud2")) {
       Pointcloud pointcloud;
+
       pcl::fromROSMsg(*(m.instantiate<sensor_msgs::PointCloud2>()), pointcloud);
 
       pointcloud.header.frame_id += std::string("_out");

@@ -8,6 +8,7 @@
 #include <pcl/io/ply_io.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <pcl/features/normal_3d.h>
 
 #include <kindr/minimal/quat-transformation.h>
 
@@ -60,11 +61,13 @@ class Scan {
       min_point_distance = 2;
       max_point_distance = 20;
       keep_points_ratio = 0.01;
+      min_point_curvature = 0.0;
     }
 
     Scalar min_point_distance;
     Scalar max_point_distance;
     Scalar keep_points_ratio;
+    Scalar min_point_curvature;
   };
 
   Scan(const Pointcloud& pointcloud, const Config& config = Config());
