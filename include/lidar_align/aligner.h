@@ -17,7 +17,6 @@ class Aligner {
       knn_batch_size = 5000;
       knn_k = 5;
       knn_max_dist = 0.1;
-      joint_self_compare = false;
     }
 
     size_t knn_batch_size;
@@ -40,12 +39,12 @@ class Aligner {
   void updateTableFooter(const Scalar error);
 
   static Scalar kNNError(
-      const pcl::KdTreeFLANN<Point>& kdtree, const Pointcloud& pointcloud,
+      const pcl::KdTreeFLANN<PointN>& kdtree, const PointcloudN& pointcloud,
       const size_t k, const float max_dist, const size_t start_idx = 0,
       const size_t end_idx = std::numeric_limits<size_t>::max());
 
-  Scalar lidarOdomKNNError(const Pointcloud& base_pointcloud,
-                           const Pointcloud& combined_pointcloud) const;
+  Scalar lidarOdomKNNError(const PointcloudN& base_pointcloud,
+                           const PointcloudN& combined_pointcloud) const;
 
   Scalar lidarOdomKNNError(const Lidar& lidar) const;
 

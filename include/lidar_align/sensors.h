@@ -20,7 +20,9 @@ typedef long long int Timestamp;
 typedef kindr::minimal::QuatTransformationTemplate<Scalar> Transform;
 typedef kindr::minimal::AngleAxisTemplate<Scalar> AngleAxis;
 typedef pcl::PointXYZI Point;
+typedef pcl::PointXYZINormal PointN;
 typedef pcl::PointCloud<Point> Pointcloud;
+typedef pcl::PointCloud<PointN> PointcloudN;
 
 class OdomTformData {
  public:
@@ -60,14 +62,14 @@ class Scan {
     Config() {
       min_point_distance = 2;
       max_point_distance = 20;
-      keep_points_ratio = 0.01;
-      min_point_curvature = 0.0;
+      keep_points_ratio = 0.1;
+      max_per_scan_points = 10000;
     }
 
     Scalar min_point_distance;
     Scalar max_point_distance;
     Scalar keep_points_ratio;
-    Scalar min_point_curvature;
+    Scalar max_per_scan_points;
   };
 
   Scan(const Pointcloud& pointcloud, const Config& config = Config());
@@ -77,14 +79,14 @@ class Scan {
 
   const Transform& getOdomTransform() const;
 
-  const Pointcloud& getRawPointcloud() const;
+  const PointcloudN& getRawPointcloud() const;
 
   void getTimeAlignedPointcloud(const Transform& T_o_l,
-                                Pointcloud* pointcloud) const;
+                                PointcloudN* pointcloud) const;
 
  private:
   Timestamp timestamp_us_;  // signed to allow simpler comparisons
-  Pointcloud raw_points_;
+  PointcloudN raw_points_;
   std::vector<Transform>
       T_o0_ot_;  // absolute odom transform to each point in pointcloud
 
@@ -98,7 +100,7 @@ class Lidar {
   const size_t getNumberOfScans() const;
 
   // note points are appended so any points in *pointcloud are preserved
-  void getCombinedPointcloud(Pointcloud* pointcloud) const;
+  void getCombinedPointcloud(PointcloudN* pointcloud) const;
 
   const LidarId& getId() const;
 
@@ -128,7 +130,7 @@ class LidarArray {
   void addPointcloud(const LidarId& lidar_id, const Pointcloud& pointcloud,
                      const Scan::Config& config = Scan::Config());
 
-  void getCombinedPointcloud(Pointcloud* pointcloud) const;
+  void getCombinedPointcloud(PointcloudN* pointcloud) const;
 
   const Lidar& getLidar(const LidarId& lidar_id) const;
 

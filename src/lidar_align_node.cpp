@@ -75,8 +75,8 @@ int main(int argc, char** argv) {
                    scan_config.max_point_distance);
   nh_private.param("keep_points_ratio", scan_config.keep_points_ratio,
                    scan_config.keep_points_ratio);
-  nh_private.param("min_point_curvature", scan_config.min_point_curvature,
-                   scan_config.min_point_curvature);
+  nh_private.param("max_per_scan_points", scan_config.max_per_scan_points,
+                   scan_config.max_per_scan_points);
 
   LidarArray lidar_array;
   Odom odom;
@@ -101,7 +101,22 @@ int main(int argc, char** argv) {
       Pointcloud pointcloud;
       pcl::fromROSMsg(*(m.instantiate<sensor_msgs::PointCloud2>()), pointcloud);
 
-      lidar_array.addPointcloud(m.getTopic(), pointcloud, scan_config);
+      //cut pointclouds up (only for testing)
+      Pointcloud front, back;
+      for(const Point& point: pointcloud){
+        if(point.x > 0){
+          front.push_back(point);
+        }
+        else{
+          back.push_back(point);
+        }
+      }
+      front.header = pointcloud.header;
+      back.header = pointcloud.header;
+      lidar_array.addPointcloud("front", front, scan_config);
+      lidar_array.addPointcloud("back", back, scan_config);
+
+      //lidar_array.addPointcloud(m.getTopic(), pointcloud, scan_config);
 
       if (lidar_array.hasAtleastNScans(use_n_scans)) {
         break;
@@ -182,7 +197,7 @@ int main(int argc, char** argv) {
 
   table_ptr->updateHeader("Saving data");
   rosbag::Bag bag_out;
-  bag_out.open("/home/z/datasets/kitti/out.bag", rosbag::bagmode::Write);
+  /*bag_out.open("/home/z/datasets/kitti/out.bag", rosbag::bagmode::Write);
 
   size_t odom_idx = 0;
   for (const rosbag::MessageInstance& m : view) {
@@ -231,7 +246,7 @@ int main(int argc, char** argv) {
       clock_msg.clock = timestamp;
       bag_out.write("/clock", timestamp, clock_msg);
     }
-  }
+  }*/
 
   return 0;
 }

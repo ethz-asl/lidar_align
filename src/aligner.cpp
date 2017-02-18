@@ -14,8 +14,8 @@ void Aligner::updateTableFooter(const Scalar error) {
   table_ptr_->updateFooter(ss.str());
 }
 
-Scalar Aligner::kNNError(const pcl::KdTreeFLANN<Point>& kdtree,
-                         const Pointcloud& pointcloud, const size_t k,
+Scalar Aligner::kNNError(const pcl::KdTreeFLANN<PointN>& kdtree,
+                         const PointcloudN& pointcloud, const size_t k,
                          const float max_dist, const size_t start_idx,
                          const size_t end_idx) {
   std::vector<int> kdtree_idx(k);
@@ -32,8 +32,8 @@ Scalar Aligner::kNNError(const pcl::KdTreeFLANN<Point>& kdtree,
   return error;
 }
 
-Scalar Aligner::lidarOdomKNNError(const Pointcloud& base_pointcloud,
-                                  const Pointcloud& combined_pointcloud) const {
+Scalar Aligner::lidarOdomKNNError(const PointcloudN& base_pointcloud,
+                                  const PointcloudN& combined_pointcloud) const {
   // kill optimization if node stopped
   if (!ros::ok()) {
     throw std::runtime_error("ROS node died, exiting");
@@ -41,10 +41,10 @@ Scalar Aligner::lidarOdomKNNError(const Pointcloud& base_pointcloud,
 
   // shared_pointer needed by kdtree, no-op destructor to prevent it trying to
   // clean it up after use
-  Pointcloud::ConstPtr combined_pointcloud_ptr(&combined_pointcloud,
-                                               [](const Pointcloud*) {});
+  PointcloudN::ConstPtr combined_pointcloud_ptr(&combined_pointcloud,
+                                               [](const PointcloudN*) {});
 
-  pcl::KdTreeFLANN<Point> kdtree;
+  pcl::KdTreeFLANN<PointN> kdtree;
 
   kdtree.setInputCloud(combined_pointcloud_ptr);
 
@@ -77,51 +77,20 @@ Scalar Aligner::lidarOdomKNNError(const Pointcloud& base_pointcloud,
 }
 
 Scalar Aligner::lidarOdomKNNError(const Lidar& lidar) const {
-  Pointcloud pointcloud;
+  PointcloudN pointcloud;
   lidar.getCombinedPointcloud(&pointcloud);
   return lidarOdomKNNError(pointcloud, pointcloud);
 }
 
-/*Scalar Aligner::lidarOdomKNNError(const LidarArray& lidar_array) const {
-  if (config_.joint_self_compare || (lidar_array.getNumberOfLidars() == 1)) {
-    Pointcloud pointcloud;
-    lidar_array.getCombinedPointcloud(&pointcloud);
-    return lidarOdomKNNError(pointcloud, pointcloud);
-  }
-
-  Scalar total_error = 0;
-  for (const Lidar& base_lidar : lidar_array.getLidarVector()) {
-    Pointcloud base_pointcloud;
-    Pointcloud combined_pointcloud;
-
-    for (const Lidar& lidar : lidar_array.getLidarVector()) {
-      if (lidar.getId() == base_lidar.getId()) {
-        lidar.getCombinedPointcloud(&base_pointcloud);
-      } else {
-        lidar.getCombinedPointcloud(&combined_pointcloud);
-      }
-    }
-
-    total_error += lidarOdomKNNError(combined_pointcloud, base_pointcloud);
-  }
-
-  return total_error;
-}*/
-
 Scalar Aligner::lidarOdomKNNError(const LidarArray& lidar_array) const {
-  /*if (config_.joint_self_compare || (lidar_array.getNumberOfLidars() == 1)) {
-    Pointcloud pointcloud;
-    lidar_array.getCombinedPointcloud(&pointcloud);
-    return lidarOdomKNNError(pointcloud, pointcloud);
-  }*/
 
   Scalar total_error = 0;
   for (const Lidar& base_lidar : lidar_array.getLidarVector()) {
-    Pointcloud base_pointcloud;
+    PointcloudN base_pointcloud;
     base_lidar.getCombinedPointcloud(&base_pointcloud);
 
     for (const Lidar& lidar : lidar_array.getLidarVector()) {
-      Pointcloud combined_pointcloud;
+      PointcloudN combined_pointcloud;
       lidar.getCombinedPointcloud(&combined_pointcloud);
       total_error += lidarOdomKNNError(combined_pointcloud, base_pointcloud);
     }
@@ -339,8 +308,8 @@ void Aligner::lidarOdomTransform(const size_t num_params, Lidar* lidar_ptr) {
   opt.set_upper_bounds(ub);
 
   // only doing a rough estimate so stop quickly
-  opt.set_maxeval(200);
-  opt.set_xtol_abs(0.05);
+  opt.set_maxeval(500);
+  opt.set_xtol_abs(0.0005);
 
   opt.set_min_objective(LidarOdomMinimizer, &data);
 
@@ -379,7 +348,6 @@ void Aligner::lidarOdomJointTransform(const size_t num_params,
 
     offset += num_params;
   }
-
   nlopt::opt opt(nlopt::LN_BOBYQA, num_lidar * num_params);
   opt.set_lower_bounds(lb);
   opt.set_upper_bounds(ub);

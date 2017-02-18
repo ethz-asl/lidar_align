@@ -104,47 +104,52 @@ Scan::Scan(const Pointcloud& in, const Config& config)
   std::default_random_engine generator(in.header.stamp);
   std::uniform_real_distribution<float> distribution(0, 1);
 
-  Pointcloud::ConstPtr in_ptr(&in, [](const Pointcloud*) {});
-
-  pcl::NormalEstimation<Point, pcl::Normal> ne;
-  ne.setInputCloud (in_ptr);
-
-  // Create an empty kdtree representation, and pass it to the normal estimation object.
-  // Its content will be filled inside the object, based on the given input dataset (as no other search surface is given).
-  pcl::search::KdTree<Point>::Ptr tree (new pcl::search::KdTree<Point>());
-  ne.setSearchMethod (tree);
-
-  pcl::PointCloud<pcl::Normal>::Ptr cloud_normals (new pcl::PointCloud<pcl::Normal>);
-
-  // Use all neighbors in a sphere of radius 3cm
-  ne.setKSearch (10);
-
-  // Compute the features
-  ne.compute (*cloud_normals);
-
-  for (size_t idx = 0; idx < in.size(); ++idx) {
-
-    const Point& point = in[idx];
-    const pcl::Normal& point_normals = (*cloud_normals)[idx];
-
-    if(point_normals.curvature < config.min_point_curvature){
-      continue;
+  // curvature is an expensive metric so we first randomly cull some points
+  Pointcloud subsampled_cloud;
+  float inital_keep_ratio = static_cast<float>(config.max_per_scan_points) /
+                            static_cast<float>(in.size());
+  for (const Point& point : in) {
+    if (distribution(generator) < inital_keep_ratio) {
+      subsampled_cloud.push_back(point);
     }
+  }
 
-    //std::cerr << point_normals.curvature << std::endl;
+  Pointcloud::ConstPtr cloud_ptr(&subsampled_cloud, [](const Pointcloud*) {});
 
-    if (distribution(generator) > config.keep_points_ratio) {
-      continue;
-    }
+  pcl::NormalEstimation<Point, PointN> ne;
+  ne.setInputCloud(cloud_ptr);
 
+  // estimate normals and curvature
+  pcl::search::KdTree<Point>::Ptr tree(new pcl::search::KdTree<Point>());
+  ne.setSearchMethod(tree);
+
+  PointcloudN::Ptr cloud_normals(new PointcloudN);
+
+  ne.setKSearch(10);
+  ne.compute(*cloud_normals);
+
+  // create index of curvature (largest to smallest)
+  std::vector<size_t> index(subsampled_cloud.size());
+  for (size_t i = 0; i < index.size(); ++i) {
+    index[i] = i;
+  }
+
+  std::sort(index.begin(), index.end(), [&cloud_normals](size_t i1, size_t i2) {
+    return cloud_normals->at(i1).curvature > cloud_normals->at(i2).curvature;
+  });
+
+  // pass on only the largest curvature
+  for (size_t i = 0;
+       i < std::ceil(subsampled_cloud.size() * config.keep_points_ratio); ++i) {
+    const PointN& point = cloud_normals->at(index[i]);
     float sq_dist = point.x * point.x + point.y * point.y + point.z * point.z;
     if (std::isfinite(sq_dist) &&
         (sq_dist > (config.min_point_distance * config.min_point_distance)) &&
-        (sq_dist < (config.max_point_distance * config.max_point_distance))) {     
-
+        (sq_dist < (config.max_point_distance * config.max_point_distance))) {
       raw_points_.push_back(point);
     }
   }
+
   raw_points_.header = in.header;
 }
 
@@ -153,12 +158,11 @@ void Scan::setOdomTransform(const Odom& odom, const size_t start_idx,
   T_o0_ot_.clear();
 
   size_t i = 0;
-  for (Point point : raw_points_) {
+  for (PointN point : raw_points_) {
     // NOTE: This static cast is really really important. Without it the
     // timestamp_us will be cast to a float, as it is a very large number it
     // will have quite low precision and when it is cast back to a long int
-    // will
-    // be a very different value (about 2 to 3 million lower in some quick
+    // will be a very different value (about 2 to 3 million lower in some quick
     // tests). This difference will then break everything.
     Timestamp point_ts_us =
         timestamp_us_ + static_cast<Timestamp>(std::round(point.intensity));
@@ -177,14 +181,47 @@ const Transform& Scan::getOdomTransform() const {
 }
 
 void Scan::getTimeAlignedPointcloud(const Transform& T_o_l,
-                                    Pointcloud* pointcloud) const {
+                                    PointcloudN* pointcloud) const {
   for (size_t i = 0; i < raw_points_.size(); ++i) {
     Transform T_o_lt = T_o0_ot_[i] * T_o_l;
 
     Eigen::Affine3f pcl_transform;
     pcl_transform.matrix() = T_o_lt.cast<float>().getTransformationMatrix();
 
-    pointcloud->push_back(pcl::transformPoint(raw_points_[i], pcl_transform));
+    // pcl has functions for transforming points and functions for transforming
+    // pointclouds that contain normals. Want to transform a point with a
+    // normal? You have to write your own. What follows is copied out of
+    // pcl::transformPointCloudWithNormals
+    PointN point;
+    Eigen::Matrix<Scalar, 3, 1> pt(raw_points_[i].x, raw_points_[i].y,
+                                   raw_points_[i].z);
+    point.x = static_cast<float>(pcl_transform(0, 0) * pt.coeffRef(0) +
+                                 pcl_transform(0, 1) * pt.coeffRef(1) +
+                                 pcl_transform(0, 2) * pt.coeffRef(2) +
+                                 pcl_transform(0, 3));
+    point.y = static_cast<float>(pcl_transform(1, 0) * pt.coeffRef(0) +
+                                 pcl_transform(1, 1) * pt.coeffRef(1) +
+                                 pcl_transform(1, 2) * pt.coeffRef(2) +
+                                 pcl_transform(1, 3));
+    point.z = static_cast<float>(pcl_transform(2, 0) * pt.coeffRef(0) +
+                                 pcl_transform(2, 1) * pt.coeffRef(1) +
+                                 pcl_transform(2, 2) * pt.coeffRef(2) +
+                                 pcl_transform(2, 3));
+
+    Eigen::Matrix<Scalar, 3, 1> nt(raw_points_[i].normal_x,
+                                   raw_points_[i].normal_y,
+                                   raw_points_[i].normal_z);
+    point.normal_x = static_cast<float>(pcl_transform(0, 0) * nt.coeffRef(0) +
+                                        pcl_transform(0, 1) * nt.coeffRef(1) +
+                                        pcl_transform(0, 2) * nt.coeffRef(2));
+    point.normal_y = static_cast<float>(pcl_transform(1, 0) * nt.coeffRef(0) +
+                                        pcl_transform(1, 1) * nt.coeffRef(1) +
+                                        pcl_transform(1, 2) * nt.coeffRef(2));
+    point.normal_z = static_cast<float>(pcl_transform(2, 0) * nt.coeffRef(0) +
+                                        pcl_transform(2, 1) * nt.coeffRef(1) +
+                                        pcl_transform(2, 2) * nt.coeffRef(2));
+
+    pointcloud->push_back(point);
   }
 }
 
@@ -199,14 +236,14 @@ void Lidar::addPointcloud(const Pointcloud& pointcloud,
   scans_.emplace_back(pointcloud, config);
 }
 
-void Lidar::getCombinedPointcloud(Pointcloud* pointcloud) const {
+void Lidar::getCombinedPointcloud(PointcloudN* pointcloud) const {
   for (const Scan& scan : scans_) {
     scan.getTimeAlignedPointcloud(getOdomLidarTransform(), pointcloud);
   }
 }
 
 void Lidar::saveCombinedPointcloud(const std::string& file_path) const {
-  Pointcloud combined;
+  PointcloudN combined;
 
   getCombinedPointcloud(&combined);
 
@@ -255,7 +292,7 @@ void LidarArray::addPointcloud(const LidarId& lidar_id,
   lidar_vector_[id_to_idx_map_.at(lidar_id)].addPointcloud(pointcloud, config);
 }
 
-void LidarArray::getCombinedPointcloud(Pointcloud* pointcloud) const {
+void LidarArray::getCombinedPointcloud(PointcloudN* pointcloud) const {
   for (const Lidar& lidar : lidar_vector_) {
     lidar.getCombinedPointcloud(pointcloud);
   }
