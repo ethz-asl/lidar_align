@@ -8,7 +8,7 @@
 #include <pcl/io/ply_io.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <pcl/features/normal_3d.h>
+#include <pcl/filters/voxel_grid.h>
 
 #include <kindr/minimal/quat-transformation.h>
 
@@ -20,9 +20,7 @@ typedef long long int Timestamp;
 typedef kindr::minimal::QuatTransformationTemplate<Scalar> Transform;
 typedef kindr::minimal::AngleAxisTemplate<Scalar> AngleAxis;
 typedef pcl::PointXYZI Point;
-typedef pcl::PointXYZINormal PointN;
 typedef pcl::PointCloud<Point> Pointcloud;
-typedef pcl::PointCloud<PointN> PointcloudN;
 
 class OdomTformData {
  public:
@@ -63,13 +61,13 @@ class Scan {
       min_point_distance = 2;
       max_point_distance = 20;
       keep_points_ratio = 0.1;
-      max_per_scan_points = 10000;
+      voxel_size = 0.25;
     }
 
     Scalar min_point_distance;
     Scalar max_point_distance;
     Scalar keep_points_ratio;
-    Scalar max_per_scan_points;
+    Scalar voxel_size;
   };
 
   Scan(const Pointcloud& pointcloud, const Config& config = Config());
@@ -79,14 +77,14 @@ class Scan {
 
   const Transform& getOdomTransform() const;
 
-  const PointcloudN& getRawPointcloud() const;
+  const Pointcloud& getRawPointcloud() const;
 
   void getTimeAlignedPointcloud(const Transform& T_o_l,
-                                PointcloudN* pointcloud) const;
+                                Pointcloud* pointcloud) const;
 
  private:
   Timestamp timestamp_us_;  // signed to allow simpler comparisons
-  PointcloudN raw_points_;
+  Pointcloud raw_points_;
   std::vector<Transform>
       T_o0_ot_;  // absolute odom transform to each point in pointcloud
 
@@ -100,7 +98,7 @@ class Lidar {
   const size_t getNumberOfScans() const;
 
   // note points are appended so any points in *pointcloud are preserved
-  void getCombinedPointcloud(PointcloudN* pointcloud) const;
+  void getCombinedPointcloud(Pointcloud* pointcloud) const;
 
   const LidarId& getId() const;
 
@@ -130,7 +128,7 @@ class LidarArray {
   void addPointcloud(const LidarId& lidar_id, const Pointcloud& pointcloud,
                      const Scan::Config& config = Scan::Config());
 
-  void getCombinedPointcloud(PointcloudN* pointcloud) const;
+  void getCombinedPointcloud(Pointcloud* pointcloud) const;
 
   const Lidar& getLidar(const LidarId& lidar_id) const;
 

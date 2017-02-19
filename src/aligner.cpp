@@ -4,7 +4,8 @@ Aligner::Aligner(const std::shared_ptr<Table>& table_ptr, const Config& config)
     : table_ptr_(table_ptr), config_(config){};
 
 void Aligner::updateTableRow(const Lidar& lidar) {
-  std::vector<double> vec = transformToVec(lidar.getOdomLidarTransform(), 6);
+  std::vector<double> vec =
+      transformToVec(lidar.getOdomLidarTransform().inverse(), 6);
   table_ptr_->updateRow(lidar.getId(), vec);
 }
 
@@ -14,8 +15,8 @@ void Aligner::updateTableFooter(const Scalar error) {
   table_ptr_->updateFooter(ss.str());
 }
 
-Scalar Aligner::kNNError(const pcl::KdTreeFLANN<PointN>& kdtree,
-                         const PointcloudN& pointcloud, const size_t k,
+Scalar Aligner::kNNError(const pcl::KdTreeFLANN<Point>& kdtree,
+                         const Pointcloud& pointcloud, const size_t k,
                          const float max_dist, const size_t start_idx,
                          const size_t end_idx) {
   std::vector<int> kdtree_idx(k);
@@ -32,8 +33,8 @@ Scalar Aligner::kNNError(const pcl::KdTreeFLANN<PointN>& kdtree,
   return error;
 }
 
-Scalar Aligner::lidarOdomKNNError(const PointcloudN& base_pointcloud,
-                                  const PointcloudN& combined_pointcloud) const {
+Scalar Aligner::lidarOdomKNNError(const Pointcloud& base_pointcloud,
+                                  const Pointcloud& combined_pointcloud) const {
   // kill optimization if node stopped
   if (!ros::ok()) {
     throw std::runtime_error("ROS node died, exiting");
@@ -41,10 +42,10 @@ Scalar Aligner::lidarOdomKNNError(const PointcloudN& base_pointcloud,
 
   // shared_pointer needed by kdtree, no-op destructor to prevent it trying to
   // clean it up after use
-  PointcloudN::ConstPtr combined_pointcloud_ptr(&combined_pointcloud,
-                                               [](const PointcloudN*) {});
+  Pointcloud::ConstPtr combined_pointcloud_ptr(&combined_pointcloud,
+                                               [](const Pointcloud*) {});
 
-  pcl::KdTreeFLANN<PointN> kdtree;
+  pcl::KdTreeFLANN<Point> kdtree;
 
   kdtree.setInputCloud(combined_pointcloud_ptr);
 
@@ -77,20 +78,19 @@ Scalar Aligner::lidarOdomKNNError(const PointcloudN& base_pointcloud,
 }
 
 Scalar Aligner::lidarOdomKNNError(const Lidar& lidar) const {
-  PointcloudN pointcloud;
+  Pointcloud pointcloud;
   lidar.getCombinedPointcloud(&pointcloud);
   return lidarOdomKNNError(pointcloud, pointcloud);
 }
 
 Scalar Aligner::lidarOdomKNNError(const LidarArray& lidar_array) const {
-
   Scalar total_error = 0;
   for (const Lidar& base_lidar : lidar_array.getLidarVector()) {
-    PointcloudN base_pointcloud;
+    Pointcloud base_pointcloud;
     base_lidar.getCombinedPointcloud(&base_pointcloud);
 
     for (const Lidar& lidar : lidar_array.getLidarVector()) {
-      PointcloudN combined_pointcloud;
+      Pointcloud combined_pointcloud;
       lidar.getCombinedPointcloud(&combined_pointcloud);
       total_error += lidarOdomKNNError(combined_pointcloud, base_pointcloud);
     }

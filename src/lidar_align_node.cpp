@@ -75,8 +75,8 @@ int main(int argc, char** argv) {
                    scan_config.max_point_distance);
   nh_private.param("keep_points_ratio", scan_config.keep_points_ratio,
                    scan_config.keep_points_ratio);
-  nh_private.param("max_per_scan_points", scan_config.max_per_scan_points,
-                   scan_config.max_per_scan_points);
+  nh_private.param("voxel_size", scan_config.voxel_size,
+                   scan_config.voxel_size);
 
   LidarArray lidar_array;
   Odom odom;
@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
     table_ptr->updateHeader(
         "Finding individual odometry-lidar transforms: (x, y, roll, pitch, "
         "yaw)");
-    aligner.lidarOdomTransform(5, &lidar);
+    aligner.lidarOdomTransform(6, &lidar);
 
     std::string s = lidar.getId();
     std::replace(s.begin(), s.end(), '/', '_');

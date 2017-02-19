@@ -6,7 +6,7 @@
 
     <param name="min_point_distance" value="2" />
     <param name="max_point_distance" value="20" />
-    <param name="keep_points_ratio" value="0.01" />
+    <param name="keep_points_ratio" value="0.05" />
     <param name="max_per_scan_points" value="10000" />
     <param name="minium_angular_velocity" value="0.0" />
     <param name="minium_linear_velocity" value="0.0" />
