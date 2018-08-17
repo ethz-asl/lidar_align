@@ -101,22 +101,7 @@ int main(int argc, char** argv) {
       Pointcloud pointcloud;
       pcl::fromROSMsg(*(m.instantiate<sensor_msgs::PointCloud2>()), pointcloud);
 
-      //cut pointclouds up (only for testing)
-      Pointcloud front, back;
-      for(const Point& point: pointcloud){
-        if(point.x > 0){
-          front.push_back(point);
-        }
-        else{
-          back.push_back(point);
-        }
-      }
-      front.header = pointcloud.header;
-      back.header = pointcloud.header;
-      lidar_array.addPointcloud("front", front, scan_config);
-      lidar_array.addPointcloud("back", back, scan_config);
-
-      //lidar_array.addPointcloud(m.getTopic(), pointcloud, scan_config);
+      lidar_array.addPointcloud(m.getTopic(), pointcloud, scan_config);
 
       if (lidar_array.hasAtleastNScans(use_n_scans)) {
         break;
@@ -193,6 +178,7 @@ int main(int argc, char** argv) {
     std::string s = lidar.getId();
     std::replace(s.begin(), s.end(), '/', '_');
     lidar.saveCombinedPointcloud("/home/z/Desktop/" + s + ".ply");
+    ROS_ERROR_STREAM("\n" << lidar.getOdomLidarTransform().inverse());
   }
 
   table_ptr->updateHeader("Saving data");

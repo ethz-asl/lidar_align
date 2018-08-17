@@ -294,7 +294,7 @@ void Aligner::lidarOdomTransform(const size_t num_params, Lidar* lidar_ptr) {
       transformToVec(lidar_ptr->getOdomLidarTransform(), num_params);
 
   // check range of 10 meters and all angles
-  std::vector<double> full_range = {10, 10, 10, 3.15, 3.15, 3.15};
+  std::vector<double> full_range = {0.1, 0.1, 0.1, 3.15, 3.15, 3.15};
   std::vector<double> range = createRangeVec(full_range, num_params);
 
   std::vector<double> lb(num_params);
@@ -338,7 +338,7 @@ void Aligner::lidarOdomJointTransform(const size_t num_params,
       inital_guess[offset + j] = temp[j];
     }
 
-    std::vector<double> full_range = {2, 2, 2, 0.2, 0.2, 0.2};
+    std::vector<double> full_range = {0.1, 0.1, 0.1, 0.2, 0.2, 0.2};
     std::vector<double> range = createRangeVec(full_range, num_params);
 
     for (size_t j = 0; j < num_params; ++j) {

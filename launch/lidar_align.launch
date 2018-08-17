@@ -1,12 +1,12 @@
 <launch>
 
   <node pkg="lidar_align" name="lidar_align" type="lidar_align">
-    <param name="input_bag_path" value="/home/z/bags/kitti_long.bag" />
-    <param name="use_n_scans" value="500" />
+    <param name="input_bag_path" value="/home/z/Datasets/2018-08-16-17-54-40.bag" />
+    <param name="use_n_scans" value="10000" />
 
-    <param name="min_point_distance" value="2" />
+    <param name="min_point_distance" value="1" />
     <param name="max_point_distance" value="20" />
-    <param name="keep_points_ratio" value="0.05" />
+    <param name="keep_points_ratio" value="0.02" />
     <param name="max_per_scan_points" value="10000" />
     <param name="minium_angular_velocity" value="0.0" />
     <param name="minium_linear_velocity" value="0.0" />
