@@ -3,6 +3,8 @@
 
 #include <random>
 
+
+#include <ros/ros.h>
 #include <pcl/common/transforms.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/filters/voxel_grid.h>
@@ -56,15 +58,25 @@ class Scan {
       max_point_distance = 100;
       keep_points_ratio = 0.01;
       min_return_intensity = 5.0;
+
+      clockwise_lidar = false;
+      motion_compensation = false;
+      lidar_rpm = 600.0;
     }
 
     Scalar min_point_distance;
     Scalar max_point_distance;
     Scalar keep_points_ratio;
     Scalar min_return_intensity;
+
+    bool clockwise_lidar;
+    bool motion_compensation;
+    Scalar lidar_rpm;
   };
 
   Scan(const Pointcloud& pointcloud, const Config& config = Config());
+
+  static Config getConfig(ros::NodeHandle* nh);
 
   void setOdomTransform(const Odom& odom, const double time_offset,
                         const size_t start_idx, size_t* match_idx);

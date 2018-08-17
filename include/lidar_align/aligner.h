@@ -5,6 +5,7 @@
 #include <future>
 #include <limits>
 #include <nlopt.hpp>
+#include <ros/ros.h>
 
 #include "lidar_align/sensors.h"
 #include "lidar_align/table.h"
@@ -15,16 +16,19 @@ class Aligner {
     // set default values
     Config() {
       local = true;
-      inital_guess = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-      range = {1.0, 1.0, 1.0, 3.15, 3.15, 3.15};
+      inital_guess = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+      range = {1.0, 1.0, 1.0, 3.15, 3.15, 3.15, 0.0};
 
-      max_evals = 5000;
+      max_evals = 1000;
       xtol = 0.000001;
 
       knn_batch_size = 1000;
       knn_k = 1;
       knn_max_dist = 0.1;
       time_cal = false;
+
+      output_pointcloud_path = "";
+      output_calibration_path = "";
     }
 
     bool local;
@@ -37,6 +41,9 @@ class Aligner {
     int knn_k;
     float knn_max_dist;
     bool time_cal;
+
+    std::string output_pointcloud_path;
+    std::string output_calibration_path;
   };
 
   struct OptData {
@@ -50,10 +57,11 @@ class Aligner {
   Aligner(const std::shared_ptr<Table>& table_ptr,
           const Config& config = Config());
 
+  static Config getConfig(ros::NodeHandle* nh);
+
   void lidarOdomTransform(Lidar* lidar, Odom* odom);
 
  private:
-
   static Scalar kNNError(
       const pcl::KdTreeFLANN<Point>& kdtree, const Pointcloud& pointcloud,
       const size_t k, const float max_dist, const size_t start_idx = 0,

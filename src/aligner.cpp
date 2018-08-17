@@ -3,6 +3,25 @@
 Aligner::Aligner(const std::shared_ptr<Table>& table_ptr, const Config& config)
     : table_ptr_(table_ptr), config_(config){};
 
+Aligner::Config Aligner::getConfig(ros::NodeHandle* nh) {
+  Aligner::Config config;
+  nh->param("local", config.local, config.local);
+  nh->param("inital_guess", config.inital_guess, config.inital_guess);
+  nh->param("range", config.range, config.range);
+  nh->param("max_evals", config.max_evals, config.max_evals);
+  nh->param("xtol", config.xtol, config.xtol);
+  nh->param("knn_batch_size", config.knn_batch_size, config.knn_batch_size);
+  nh->param("knn_k", config.knn_k, config.knn_k);
+  nh->param("knn_max_dist", config.knn_max_dist, config.knn_max_dist);
+  nh->param("time_cal", config.time_cal, config.time_cal);
+  nh->param("output_pointcloud_path", config.output_pointcloud_path,
+            config.output_pointcloud_path);
+  nh->param("output_calibration_path", config.output_calibration_path,
+            config.output_calibration_path);
+
+  return config;
+}
+
 Scalar Aligner::kNNError(const pcl::KdTreeFLANN<Point>& kdtree,
                          const Pointcloud& pointcloud, const size_t k,
                          const float max_dist, const size_t start_idx,
@@ -134,7 +153,25 @@ void Aligner::lidarOdomTransform(Lidar* lidar, Odom* odom) {
   double minf;
   std::vector<double> x = config_.inital_guess;
   std::vector<double> grad;
-  LidarOdomMinimizer(x, grad, &opt_data);
   nlopt::result result = opt.optimize(x, minf);
   LidarOdomMinimizer(x, grad, &opt_data);
+
+  if (!config_.output_pointcloud_path.empty()) {
+    table_ptr_->updateHeader("Saving calibration pointcloud");
+    lidar->saveCombinedPointcloud(config_.output_pointcloud_path);
+  }
+
+  if (!config_.output_calibration_path.empty()) {
+    table_ptr_->updateHeader("Saving calibration file");
+    std::ofstream file;
+    file.open(config_.output_calibration_path, std::ofstream::out);
+    file << "T Vector: ";
+    for (double value : x) {
+      file << value << " ";
+    }
+    file << std::endl;
+    file << "T: " << std::endl;
+    file << lidar->getOdomLidarTransform() << std::endl;
+    file.close();
+  }
 }

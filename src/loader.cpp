@@ -10,6 +10,12 @@
 Loader::Loader(const std::shared_ptr<Table>& table_ptr, const Config& config)
     : table_ptr_(table_ptr), config_(config) {}
 
+Loader::Config Loader::getConfig(ros::NodeHandle* nh) {
+  Loader::Config config;
+  nh->param("use_n_scans", config.use_n_scans, config.use_n_scans);
+  return config;
+}
+
 bool Loader::loadPointcloudFromROSBag(const std::string& bag_path,
                                       const Scan::Config& scan_config,
                                       Lidar* lidar) {

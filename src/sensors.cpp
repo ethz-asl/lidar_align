@@ -55,11 +55,50 @@ Scan::Scan(const Pointcloud& in, const Config& config)
       if (std::isfinite(sq_dist) &&
           (sq_dist > (config.min_point_distance * config.min_point_distance)) &&
           (sq_dist < (config.max_point_distance * config.max_point_distance))) {
-        raw_points_.push_back(point);
+        Point store_point = point;
+
+        // 100000 * 600 / pi
+        const double timing_factor = 19098593.171 / config.lidar_rpm;
+
+        if (config.motion_compensation) {
+          store_point.intensity = std::atan2(point.x, point.y);
+
+          // cut out wrap zone
+          if (std::abs(store_point.intensity) > 3.0) {
+            continue;
+          }
+          store_point.intensity *= timing_factor;
+
+        } else {
+          store_point.intensity = 0.0;
+        }
+        if (!config.clockwise_lidar) {
+          store_point.intensity *= -1.0;
+        }
+        raw_points_.push_back(store_point);
       }
     }
   }
   raw_points_.header = in.header;
+}
+
+Scan::Config Scan::getConfig(ros::NodeHandle* nh) {
+  Scan::Config config;
+  nh->param("min_point_distance", config.min_point_distance,
+            config.min_point_distance);
+  nh->param("max_point_distance", config.max_point_distance,
+            config.max_point_distance);
+  nh->param("keep_points_ratio", config.keep_points_ratio,
+            config.keep_points_ratio);
+  nh->param("min_return_intensity", config.min_return_intensity,
+            config.min_return_intensity);
+
+  nh->param("clockwise_lidar", config.clockwise_lidar, config.clockwise_lidar);
+  nh->param("motion_compensation", config.motion_compensation,
+            config.motion_compensation);
+  nh->param("lidar_rpm", config.lidar_rpm, config.lidar_rpm);
+
+  return config;
 }
 
 void Scan::setOdomTransform(const Odom& odom, const double time_offset,
@@ -73,8 +112,9 @@ void Scan::setOdomTransform(const Odom& odom, const double time_offset,
     // will have quite low precision and when it is cast back to a long int
     // will be a very different value (about 2 to 3 million lower in some
     // quick tests). This difference will then break everything.
-    Timestamp point_ts_us =
-        timestamp_us_ + static_cast<Timestamp>(1000000.0 * time_offset);
+    Timestamp point_ts_us = timestamp_us_ +
+                            static_cast<Timestamp>(1000000.0 * time_offset) +
+                            static_cast<Timestamp>(point.intensity);
     T_o0_ot_.push_back(
         odom.getOdomTransform(point_ts_us, start_idx, match_idx));
   }

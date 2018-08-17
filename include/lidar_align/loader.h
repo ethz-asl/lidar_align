@@ -1,6 +1,8 @@
 #ifndef LIDAR_ALIGN_LOADER_H_
 #define LIDAR_ALIGN_LOADER_H_
 
+#include <ros/ros.h>
+
 #include "lidar_align/sensors.h"
 #include "lidar_align/table.h"
 
@@ -17,12 +19,13 @@ class Loader {
          const Config& config = Config());
 
   bool loadPointcloudFromROSBag(const std::string& bag_path,
-                                const Scan::Config& scan_config,
-                                Lidar* lidar);
+                                const Scan::Config& scan_config, Lidar* lidar);
 
   bool loadTformFromROSBag(const std::string& bag_path, Odom* odom);
 
   bool loadTformFromMaplabCSV(const std::string& csv_path, Odom* odom);
+
+  static Config getConfig(ros::NodeHandle* nh);
 
  private:
   static bool getNextCSVTransform(std::istream& str, Timestamp* stamp,
