@@ -14,13 +14,26 @@ class Aligner {
   struct Config {
     // set default values
     Config() {
+      local = true;
+      inital_guess = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+      range = {1.0, 1.0, 1.0, 3.15, 3.15, 3.15};
+
+      max_evals = 5000;
+      xtol = 0.000001;
+
       knn_batch_size = 5000;
-      knn_k = 5;
+      knn_k = 1;
       knn_max_dist = 0.1;
     }
 
-    size_t knn_batch_size;
-    size_t knn_k;
+    bool local;
+    std::vector<double> inital_guess;
+    std::vector<double> range;
+    double max_evals;
+    double xtol;
+
+    int knn_batch_size;
+    int knn_k;
     float knn_max_dist;
     bool joint_self_compare;
   };
@@ -32,6 +45,9 @@ class Aligner {
 
   void lidarOdomJointTransform(const size_t num_params,
                                LidarArray* lidar_array_ptr);
+
+  static std::vector<double> transformToVec(const Transform& T,
+                                            size_t vec_length = 6);
 
  private:
   void updateTableRow(const Lidar& lidar);
@@ -59,9 +75,6 @@ class Aligner {
 
   static Transform vecToTransform(const std::vector<double>& vec,
                                   const Transform& inital_T);
-
-  static std::vector<double> transformToVec(const Transform& T,
-                                            size_t vec_length = 6);
 
   static std::vector<double> createRangeVec(const std::vector<double>& full_vec,
                                             size_t vec_length = 6);

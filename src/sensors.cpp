@@ -104,16 +104,7 @@ Scan::Scan(const Pointcloud& in, const Config& config)
   std::default_random_engine generator(in.header.stamp);
   std::uniform_real_distribution<float> distribution(0, 1);
 
-  Pointcloud subsampled_cloud;
-  Pointcloud::ConstPtr in_ptr(&in, [](const Pointcloud*) {});
-
-  // Create the filtering object
-  pcl::VoxelGrid<Point> sor;
-  sor.setInputCloud(in_ptr);
-  sor.setLeafSize(config.voxel_size, config.voxel_size, config.voxel_size);
-  sor.filter(subsampled_cloud);
-
-  for (const Point& point : subsampled_cloud) {
+  for (const Point& point : in) {
     if (distribution(generator) < config.keep_points_ratio) {
       float sq_dist = point.x * point.x + point.y * point.y + point.z * point.z;
       if (std::isfinite(sq_dist) &&

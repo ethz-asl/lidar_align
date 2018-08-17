@@ -1,7 +1,8 @@
 #include "lidar_align/aligner.h"
 
 Aligner::Aligner(const std::shared_ptr<Table>& table_ptr, const Config& config)
-    : table_ptr_(table_ptr), config_(config){};
+    : table_ptr_(table_ptr), config_(config){
+    };
 
 void Aligner::updateTableRow(const Lidar& lidar) {
   std::vector<double> vec =
@@ -27,7 +28,7 @@ Scalar Aligner::kNNError(const pcl::KdTreeFLANN<Point>& kdtree,
        ++idx) {
     kdtree.nearestKSearch(pointcloud[idx], k, kdtree_idx, kdtree_dist);
     for (const float& x : kdtree_dist) {
-      error += std::tanh(x / max_dist);
+      error += std::min(x, max_dist);
     }
   }
   return error;
@@ -61,8 +62,9 @@ Scalar Aligner::lidarOdomKNNError(const Pointcloud& base_pointcloud,
   std::vector<std::future<Scalar>> errors;
   for (size_t start_idx = 0; start_idx < base_pointcloud.size();
        start_idx += config_.knn_batch_size) {
-    size_t end_idx = start_idx + std::min(base_pointcloud.size() - start_idx,
-                                          config_.knn_batch_size);
+    size_t end_idx =
+        start_idx + std::min(base_pointcloud.size() - start_idx,
+                             static_cast<size_t>(config_.knn_batch_size));
     errors.emplace_back(std::async(std::launch::async, Aligner::kNNError,
                                    kdtree, base_pointcloud, k,
                                    config_.knn_max_dist, start_idx, end_idx));
@@ -254,107 +256,38 @@ double Aligner::LidarOdomMinimizer(const std::vector<double>& x,
   return error;
 }
 
-double Aligner::LidarOdomJointMinimizer(const std::vector<double>& x,
-                                        std::vector<double>& grad,
-                                        void* f_data) {
-  std::pair<LidarArray*, Aligner*> data =
-      *static_cast<std::pair<LidarArray*, Aligner*>*>(f_data);
-
-  if (!grad.empty()) {
-    //  std::cerr << "error gradient in use" << std::endl;
-  }
-
-  std::vector<Lidar>& lidar_vec = data.first->getLidarVector();
-
-  size_t part_len = x.size() / lidar_vec.size();
-  std::vector<double>::const_iterator vec_start = x.begin();
-  for (Lidar& lidar : lidar_vec) {
-    std::vector<double> x_part(vec_start, vec_start + part_len);
-    Transform T =
-        Aligner::vecToTransform(x_part, lidar.getOdomLidarTransform());
-    lidar.setOdomLidarTransform(T);
-    data.second->updateTableRow(lidar);
-
-    vec_start += part_len;
-  }
-
-  double error = data.second->lidarOdomKNNError(*data.first);
-
-  data.second->updateTableFooter(error);
-
-  return error;
-}
-
 void Aligner::lidarOdomTransform(const size_t num_params, Lidar* lidar_ptr) {
   std::pair<Lidar*, Aligner*> data = std::make_pair(lidar_ptr, this);
 
-  nlopt::opt opt(nlopt::GN_DIRECT_L, num_params);
-
-  std::vector<double> inital_guess =
-      transformToVec(lidar_ptr->getOdomLidarTransform(), num_params);
+  nlopt::opt opt;
+  if (config_.local) {
+    opt = nlopt::opt(nlopt::LN_BOBYQA, num_params);
+  } else {
+    opt = nlopt::opt(nlopt::GN_DIRECT_L, num_params);
+  }
 
   // check range of 10 meters and all angles
-  std::vector<double> full_range = {0.1, 0.1, 0.1, 3.15, 3.15, 3.15};
-  std::vector<double> range = createRangeVec(full_range, num_params);
+  std::vector<double> range = createRangeVec(config_.range, num_params);
 
   std::vector<double> lb(num_params);
   std::vector<double> ub(num_params);
   for (size_t i = 0; i < num_params; ++i) {
-    lb[i] = inital_guess[i] - range[i];
-    ub[i] = inital_guess[i] + range[i];
+    lb[i] = config_.inital_guess[i] - range[i];
+    ub[i] = config_.inital_guess[i] + range[i];
   }
 
   opt.set_lower_bounds(lb);
   opt.set_upper_bounds(ub);
 
   // only doing a rough estimate so stop quickly
-  opt.set_maxeval(500);
-  opt.set_xtol_abs(0.0005);
+  opt.set_maxeval(config_.max_evals);
+  opt.set_xtol_abs(config_.xtol);
 
   opt.set_min_objective(LidarOdomMinimizer, &data);
 
   double minf;
-  LidarOdomMinimizer(inital_guess, inital_guess, &data);
-  nlopt::result result = opt.optimize(inital_guess, minf);
-  LidarOdomMinimizer(inital_guess, inital_guess, &data);
-}
-
-void Aligner::lidarOdomJointTransform(const size_t num_params,
-                                      LidarArray* lidar_array_ptr) {
-  std::pair<LidarArray*, Aligner*> data = std::make_pair(lidar_array_ptr, this);
-
-  size_t offset = 0;
-  const size_t num_lidar = lidar_array_ptr->getNumberOfLidars();
-
-  std::vector<double> lb(num_lidar * num_params);
-  std::vector<double> ub(num_lidar * num_params);
-  std::vector<double> inital_guess(num_lidar * num_params);
-
-  for (size_t i = 0; i < num_lidar; ++i) {
-    std::vector<double> temp = transformToVec(
-        lidar_array_ptr->getLidarVector()[i].getOdomLidarTransform(),
-        num_params);
-    for (size_t j = 0; j < temp.size(); ++j) {
-      inital_guess[offset + j] = temp[j];
-    }
-
-    std::vector<double> full_range = {0.1, 0.1, 0.1, 0.2, 0.2, 0.2};
-    std::vector<double> range = createRangeVec(full_range, num_params);
-
-    for (size_t j = 0; j < num_params; ++j) {
-      lb[offset + j] = inital_guess[offset + j] - range[j];
-      ub[offset + j] = inital_guess[offset + j] + range[j];
-    }
-
-    offset += num_params;
-  }
-  nlopt::opt opt(nlopt::LN_BOBYQA, num_lidar * num_params);
-  opt.set_lower_bounds(lb);
-  opt.set_upper_bounds(ub);
-  opt.set_maxeval(5000);
-  opt.set_xtol_abs(0.00000001);
-  opt.set_min_objective(LidarOdomJointMinimizer, &data);
-  double minf;
-  nlopt::result result = opt.optimize(inital_guess, minf);
-  LidarOdomJointMinimizer(inital_guess, inital_guess, &data);
+  std::vector<double> x = config_.inital_guess;
+  LidarOdomMinimizer(x, x, &data);
+  nlopt::result result = opt.optimize(x, minf);
+  LidarOdomMinimizer(x, x, &data);
 }

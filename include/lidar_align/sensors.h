@@ -58,16 +58,14 @@ class Scan {
   struct Config {
     // set default values
     Config() {
-      min_point_distance = 2;
-      max_point_distance = 20;
+      min_point_distance = 0;
+      max_point_distance = 100;
       keep_points_ratio = 0.1;
-      voxel_size = 0.25;
     }
 
     Scalar min_point_distance;
     Scalar max_point_distance;
     Scalar keep_points_ratio;
-    Scalar voxel_size;
   };
 
   Scan(const Pointcloud& pointcloud, const Config& config = Config());

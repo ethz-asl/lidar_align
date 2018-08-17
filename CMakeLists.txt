@@ -17,6 +17,7 @@ add_executable(lidar_align
   src/lidar_align_node.cpp
   src/sensors.cpp
   src/aligner.cpp  
+  src/loader.cpp
 )
 target_link_libraries(lidar_align ${catkin_LIBRARIES} ${CURSES_LIBRARIES})
 
