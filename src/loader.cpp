@@ -12,7 +12,7 @@ Loader::Loader(const std::shared_ptr<Table>& table_ptr, const Config& config)
 
 bool Loader::loadPointcloudFromROSBag(const std::string& bag_path,
                                       const Scan::Config& scan_config,
-                                      LidarArray* lidar_array) {
+                                      Lidar* lidar) {
   rosbag::Bag bag;
   try {
     bag.open(bag_path, rosbag::bagmode::Read);
@@ -34,9 +34,9 @@ bool Loader::loadPointcloudFromROSBag(const std::string& bag_path,
     Pointcloud pointcloud;
     pcl::fromROSMsg(*(m.instantiate<sensor_msgs::PointCloud2>()), pointcloud);
 
-    lidar_array->addPointcloud(m.getTopic(), pointcloud, scan_config);
+    lidar->addPointcloud(pointcloud, scan_config);
 
-    if (lidar_array->hasAtleastNScans(config_.use_n_scans)) {
+    if (lidar->getNumberOfScans() >= config_.use_n_scans) {
       break;
     }
   }
@@ -90,7 +90,8 @@ bool Loader::loadTformFromMaplabCSV(const std::string& csv_path, Odom* odom) {
     kindr::minimal::RotationQuaternion rot;
 
     if (getNextCSVTransform(file, &stamp, &pos, &rot)) {
-      odom->addTransformData(stamp, kindr::minimal::QuatTransformation(rot, pos).cast<Scalar>());
+      odom->addTransformData(
+          stamp, kindr::minimal::QuatTransformation(rot, pos).cast<Scalar>());
     }
   }
 

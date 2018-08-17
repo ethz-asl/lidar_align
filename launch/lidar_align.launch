@@ -6,14 +6,15 @@
     <param name="use_n_scans" value="1000" />
 
     <param name="local" value="true" />
-    <rosparam param="inital_guess">[0.0, 0.0, 0.0, 0.0, 0.0, -1.67366]</rosparam>
-    <rosparam param="range">[0.2, 0.2, 0.2, 0.5, 0.5, 0.5]</rosparam>
+    <param name="time_cal" value="true" />
+    <rosparam param="inital_guess">[0.0, 0.0, 0.0, 0.0, 0.0, -1.67366, 0.0]</rosparam>
+    <rosparam param="range">[0.2, 0.2, 0.2, 0.5, 0.5, 0.5, 0.1]</rosparam>
     <param name="max_evals" value="500" />
     <param name="xtol" value="0.0000001" />
     
     <param name="min_point_distance" value="1" />
-    <param name="max_point_distance" value="20" />
-    <param name="keep_points_ratio" value="0.02" />
+    <param name="max_point_distance" value="5" />
+    <param name="keep_points_ratio" value="0.05" />
     <param name="max_per_scan_points" value="10000" />
 
     <param name="knn_batch_size" value="5000" />

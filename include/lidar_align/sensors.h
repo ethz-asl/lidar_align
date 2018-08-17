@@ -5,10 +5,10 @@
 
 #include <pcl/common/transforms.h>
 #include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl/filters/voxel_grid.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <pcl/filters/voxel_grid.h>
 
 #include <kindr/minimal/quat-transformation.h>
 
@@ -36,18 +36,12 @@ class OdomTformData {
 
 class Odom {
  public:
-  void addRawOdomData(const Timestamp& timestamp_us,
-                      const Scalar& linear_velocity,
-                      const Scalar& angular_velocity);
-
   void addTransformData(const Timestamp& timestamp_us,
                         const Transform& transform);
 
   Transform getOdomTransform(const Timestamp timestamp_us,
                              const size_t start_idx = 0,
                              size_t* match_idx = nullptr) const;
-
-  bool getFinalAngularVeloctiy(Scalar* angular_velocity) const;
 
  private:
   std::vector<OdomTformData> data_;
@@ -60,18 +54,20 @@ class Scan {
     Config() {
       min_point_distance = 0;
       max_point_distance = 100;
-      keep_points_ratio = 0.1;
+      keep_points_ratio = 0.01;
+      min_return_intensity = 5.0;
     }
 
     Scalar min_point_distance;
     Scalar max_point_distance;
     Scalar keep_points_ratio;
+    Scalar min_return_intensity;
   };
 
   Scan(const Pointcloud& pointcloud, const Config& config = Config());
 
-  void setOdomTransform(const Odom& odom, const size_t start_idx,
-                        size_t* match_idx);
+  void setOdomTransform(const Odom& odom, const double time_offset,
+                        const size_t start_idx, size_t* match_idx);
 
   const Transform& getOdomTransform() const;
 
@@ -103,7 +99,7 @@ class Lidar {
   void addPointcloud(const Pointcloud& pointcloud,
                      const Scan::Config& config = Scan::Config());
 
-  void setOdomOdomTransforms(const Odom& odom);
+  void setOdomOdomTransforms(const Odom& odom, const double time_offset = 0.0);
 
   void setOdomLidarTransform(const Transform& T_o_l);
 
@@ -117,32 +113,6 @@ class Lidar {
   Transform T_o_l_;  // transform from lidar to odometry
 
   std::vector<Scan> scans_;
-};
-
-class LidarArray {
- public:
-  const size_t getNumberOfLidars() const;
-
-  void addPointcloud(const LidarId& lidar_id, const Pointcloud& pointcloud,
-                     const Scan::Config& config = Scan::Config());
-
-  void getCombinedPointcloud(Pointcloud* pointcloud) const;
-
-  const Lidar& getLidar(const LidarId& lidar_id) const;
-
-  std::vector<Lidar>& getLidarVector();
-
-  const std::vector<Lidar>& getLidarVector() const;
-
-  bool hasAtleastNScans(const size_t n) const;
-
-  void setOdomOdomTransforms(const Odom& odom);
-
- private:
-  // while it is nice to refer to lidars by id, we often just need a vector of
-  // them (thus why the lidars are not in the map directly)
-  std::map<LidarId, size_t> id_to_idx_map_;
-  std::vector<Lidar> lidar_vector_;
 };
 
 #endif

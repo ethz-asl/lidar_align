@@ -18,7 +18,7 @@ class Loader {
 
   bool loadPointcloudFromROSBag(const std::string& bag_path,
                                 const Scan::Config& scan_config,
-                                LidarArray* lidar_array);
+                                Lidar* lidar);
 
   bool loadTformFromROSBag(const std::string& bag_path, Odom* odom);
 

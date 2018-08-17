@@ -14,7 +14,7 @@
 #include "lidar_align/sensors.h"
 #include "lidar_align/table.h"
 
-Aligner::Config getAlignerConfig(ros::NodeHandle* nh){
+Aligner::Config getAlignerConfig(ros::NodeHandle* nh) {
   Aligner::Config config;
   nh->param("local", config.local, config.local);
   nh->param("inital_guess", config.inital_guess, config.inital_guess);
@@ -24,6 +24,7 @@ Aligner::Config getAlignerConfig(ros::NodeHandle* nh){
   nh->param("knn_batch_size", config.knn_batch_size, config.knn_batch_size);
   nh->param("knn_k", config.knn_k, config.knn_k);
   nh->param("knn_max_dist", config.knn_max_dist, config.knn_max_dist);
+  nh->param("time_cal", config.time_cal, config.time_cal);
 
   return config;
 }
@@ -36,6 +37,8 @@ Scan::Config getScanConfig(ros::NodeHandle* nh) {
             config.max_point_distance);
   nh->param("keep_points_ratio", config.keep_points_ratio,
             config.keep_points_ratio);
+  nh->param("min_return_intensity", config.min_return_intensity,
+            config.min_return_intensity);
   return config;
 }
 
@@ -53,8 +56,9 @@ std::shared_ptr<Table> setupTable() {
   column_names.push_back("rx");
   column_names.push_back("ry");
   column_names.push_back("rz");
+  column_names.push_back("time");
 
-  return std::make_shared<Table>(column_names, 20, 10);
+  return std::make_shared<Table>(column_names, 10, 10);
 }
 
 int main(int argc, char** argv) {
@@ -78,44 +82,33 @@ int main(int argc, char** argv) {
     exit(EXIT_FAILURE);
   }
 
-  LidarArray lidar_array;
+  Lidar lidar;
   Odom odom;
 
-  if (!loader.loadPointcloudFromROSBag(
-          input_bag_path, getScanConfig(&nh_private), &lidar_array) ||
+  if (!loader.loadPointcloudFromROSBag(input_bag_path,
+                                       getScanConfig(&nh_private), &lidar) ||
       !loader.loadTformFromMaplabCSV(input_csv_path, &odom)) {
     ROS_FATAL("Data loading failed");
     exit(0);
   }
 
-  if (!lidar_array.hasAtleastNScans(1)) {
+  if (lidar.getNumberOfScans() == 0) {
     ROS_FATAL("No data loaded, exiting");
     exit(0);
   }
 
   table_ptr->updateHeader("Interpolating odometry data");
-  std::vector<Lidar>& lidar_vector = lidar_array.getLidarVector();
-  for (Lidar& lidar : lidar_vector) {
-    lidar.setOdomOdomTransforms(odom);
-  }
+  lidar.setOdomOdomTransforms(odom);
 
   Aligner aligner(table_ptr, getAlignerConfig(&nh_private));
 
-  table_ptr->updateHeader("Finding individual odometry-lidar transforms");
-  for (Lidar& lidar : lidar_vector) {
-    table_ptr->updateHeader(
-        "Finding odometry-lidar transforms: (x, y, roll, pitch, "
-        "yaw)");
-    aligner.lidarOdomTransform(6, &lidar);
+  table_ptr->updateHeader("Finding individual odometry-lidar transform");
 
-    std::string s = lidar.getId();
-    std::replace(s.begin(), s.end(), '/', '_');
-    lidar.saveCombinedPointcloud("/home/z/Desktop/" + s + ".ply");
-  }
+  aligner.lidarOdomTransform(&lidar, &odom);
 
-  for (Lidar& lidar : lidar_vector) {
-      ROS_ERROR_STREAM(" " << lidar.getOdomLidarTransform());
-  }
+  lidar.saveCombinedPointcloud("/home/z/Desktop/lidar.ply");
+
+  ROS_ERROR_STREAM(" " << lidar.getOdomLidarTransform());
 
   return 0;
 }

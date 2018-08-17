@@ -16,7 +16,8 @@ class Table {
     wattron(footer_window_, A_REVERSE);
 
     for (size_t col = 0; col < col_names.size(); ++col) {
-      col_name_windows_.emplace_back(newwin(1, cell_width_, 1, names_width_ + col * cell_width_));
+      col_name_windows_.emplace_back(
+          newwin(1, cell_width_, 1, names_width_ + col * cell_width_));
       wattron(col_name_windows_[col], A_BOLD);
       wprintw(col_name_windows_[col], col_names[col].c_str());
       wrefresh(col_name_windows_[col]);
@@ -71,15 +72,14 @@ class Table {
       wrefresh(footer_window_);
 
       size_t num_rows = cell_windows_.size();
-      
+
       row_name_windows_.emplace_back(newwin(1, names_width_, 2 + num_rows, 0));
       wattron(row_name_windows_.back(), A_BOLD);
       wprintw(row_name_windows_.back(), row_name.c_str());
       wrefresh(row_name_windows_.back());
       for (size_t col = 0; col < col_name_windows_.size(); ++col) {
-        cell_windows_[row_name].emplace_back(
-            newwin(1, cell_width_, 2 + num_rows,
-                   names_width_ + cell_width_ * col));
+        cell_windows_[row_name].emplace_back(newwin(
+            1, cell_width_, 2 + num_rows, names_width_ + cell_width_ * col));
       }
     }
   }
