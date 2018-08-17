@@ -8,21 +8,6 @@ This library is pretty new and only tested on a couple of datasets, so expect so
 ## Parameters
 ------
 
-      local = true;
-      inital_guess = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-      range = {1.0, 1.0, 1.0, 3.15, 3.15, 3.15, 0.0};
-
-      max_evals = 1000;
-      xtol = 0.000001;
-
-      knn_batch_size = 1000;
-      knn_k = 1;
-      knn_max_dist = 0.1;
-      time_cal = false;
-
-      output_pointcloud_path = "";
-      output_calibration_path = "";
-    }
 ### Scan Parameters
 | Parameter | Description | Default |
 | --------------------  |:-----------:| :-------:|
