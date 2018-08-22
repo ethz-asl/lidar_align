@@ -1,62 +1,15 @@
-#include <geometry_msgs/TwistStamped.h>
 #include <ros/ros.h>
-#include <rosbag/bag.h>
-#include <rosbag/view.h>
 
 #include <algorithm>
 
-#include <geometry_msgs/PoseStamped.h>
-#include <geometry_msgs/TransformStamped.h>
-#include <geometry_msgs/TwistStamped.h>
-#include <rosgraph_msgs/Clock.h>
-#include <tf/tfMessage.h>
-#include <tf/transform_datatypes.h>
-
-#include <minkindr_conversions/kindr_msg.h>
-#include <minkindr_conversions/kindr_tf.h>
-
-#include <pcl/common/transforms.h>
-#include <pcl_ros/point_cloud.h>
-
 #include "lidar_align/aligner.h"
+#include "lidar_align/loader.h"
 #include "lidar_align/sensors.h"
 #include "lidar_align/table.h"
 
-// number of frames to take when calculating rough 2D alignment
-constexpr int kDefaultUseNScans = 100000000;
-constexpr float kDefaultMininumAngularVelocity = 0.0;
-constexpr float kDefaultMininumLinearVelocity = 0.01;
+using namespace lidar_align;
 
-int main(int argc, char** argv) {
-  ros::init(argc, argv, "lidar_align");
-
-  ros::NodeHandle nh, nh_private("~");
-
-  std::string input_bag_path;
-  if (!nh_private.getParam("input_bag_path", input_bag_path)) {
-    ROS_FATAL("Could not find input_bag_path parameter, exiting");
-    exit(EXIT_FAILURE);
-  }
-
-  int use_n_scans;
-  nh_private.param("use_n_scans", use_n_scans, kDefaultUseNScans);
-
-  float minium_angular_velocity;
-  nh_private.param("minium_angular_velocity", minium_angular_velocity,
-                   kDefaultMininumAngularVelocity);
-  float minium_linear_velocity;
-  nh_private.param("minium_linear_velocity", minium_linear_velocity,
-                   kDefaultMininumLinearVelocity);
-
-  rosbag::Bag bag;
-  bag.open(input_bag_path, rosbag::bagmode::Read);
-
-  std::vector<std::string> types;
-  types.push_back(std::string("sensor_msgs/PointCloud2"));
-  types.push_back(std::string("geometry_msgs/TwistStamped"));
-  types.push_back(std::string("geometry_msgs/TransformStamped"));
-  rosbag::View view(bag, rosbag::TypeQuery(types));
-
+std::shared_ptr<Table> setupTable() {
   std::vector<std::string> column_names;
   column_names.push_back("x");
   column_names.push_back("y");
@@ -64,189 +17,53 @@ int main(int argc, char** argv) {
   column_names.push_back("rx");
   column_names.push_back("ry");
   column_names.push_back("rz");
+  column_names.push_back("time");
 
-  std::shared_ptr<Table> table_ptr =
-      std::make_shared<Table>(column_names, 20, 10);
+  return std::make_shared<Table>(column_names, 10, 10);
+}
 
-  Scan::Config scan_config;
-  nh_private.param("min_point_distance", scan_config.min_point_distance,
-                   scan_config.min_point_distance);
-  nh_private.param("max_point_distance", scan_config.max_point_distance,
-                   scan_config.max_point_distance);
-  nh_private.param("keep_points_ratio", scan_config.keep_points_ratio,
-                   scan_config.keep_points_ratio);
-  nh_private.param("voxel_size", scan_config.voxel_size,
-                   scan_config.voxel_size);
+int main(int argc, char** argv) {
+  ros::init(argc, argv, "lidar_align");
 
-  LidarArray lidar_array;
-  Odom odom;
+  ros::NodeHandle nh, nh_private("~");
 
-  size_t scan_num = 0;
-  size_t reject_num = 0;
-  Scalar angular_velocity = 0;
-  Scalar linear_velocity = 0;
-  for (const rosbag::MessageInstance& m : view) {
-    if (m.getDataType() == std::string("sensor_msgs/PointCloud2")) {
-      if ((linear_velocity < minium_linear_velocity) ||
-          (angular_velocity < minium_angular_velocity)) {
-        reject_num++;
-        continue;
-      }
+  std::shared_ptr<Table> table_ptr = setupTable();
 
-      std::stringstream ss;
-      ss << "Loading scan:       " << scan_num++
-         << " Rejected:         " << reject_num;
-      table_ptr->updateHeader(ss.str());
+  Loader loader(table_ptr, Loader::getConfig(&nh_private));
 
-      Pointcloud pointcloud;
-      pcl::fromROSMsg(*(m.instantiate<sensor_msgs::PointCloud2>()), pointcloud);
-
-      //cut pointclouds up (only for testing)
-      Pointcloud front, back;
-      for(const Point& point: pointcloud){
-        if(point.x > 0){
-          front.push_back(point);
-        }
-        else{
-          back.push_back(point);
-        }
-      }
-      front.header = pointcloud.header;
-      back.header = pointcloud.header;
-      lidar_array.addPointcloud("front", front, scan_config);
-      lidar_array.addPointcloud("back", back, scan_config);
-
-      //lidar_array.addPointcloud(m.getTopic(), pointcloud, scan_config);
-
-      if (lidar_array.hasAtleastNScans(use_n_scans)) {
-        break;
-      }
-    } else if (m.getDataType() == std::string("geometry_msgs/TwistStamped")) {
-      geometry_msgs::TwistStamped twist_msg =
-          *(m.instantiate<geometry_msgs::TwistStamped>());
-      try {
-        odom.addRawOdomData((twist_msg.header.stamp.toSec() * 1000000),
-                            twist_msg.twist.linear.x,
-                            twist_msg.twist.angular.z);
-      } catch (const std::runtime_error& e) {
-      }
-
-      angular_velocity = std::abs(twist_msg.twist.angular.z);
-      linear_velocity = std::abs(twist_msg.twist.linear.x);
-    } else if (m.getDataType() ==
-               std::string("geometry_msgs/TransformStamped")) {
-      geometry_msgs::TransformStamped transform_msg =
-          *(m.instantiate<geometry_msgs::TransformStamped>());
-
-      kindr::minimal::QuatTransformation T;
-      tf::transformMsgToKindr(transform_msg.transform, &T);
-      odom.addTransformData(transform_msg.header.stamp.toSec() * 1000000,
-                            T.cast<Scalar>());
-    }
+  std::string input_bag_path;
+  if (!nh_private.getParam("input_bag_path", input_bag_path)) {
+    ROS_FATAL("Could not find input_bag_path parameter, exiting");
+    exit(EXIT_FAILURE);
   }
 
-  if (!lidar_array.hasAtleastNScans(1)) {
+  std::string input_csv_path;
+  if (!nh_private.getParam("input_csv_path", input_csv_path)) {
+    ROS_FATAL("Could not find input_csv_path parameter, exiting");
+    exit(EXIT_FAILURE);
+  }
+
+  Lidar lidar;
+  Odom odom;
+
+  if (!loader.loadPointcloudFromROSBag(input_bag_path,
+                                       Scan::getConfig(&nh_private), &lidar) ||
+      !loader.loadTformFromMaplabCSV(input_csv_path, &odom)) {
+    ROS_FATAL("Data loading failed");
+    exit(0);
+  }
+
+  if (lidar.getNumberOfScans() == 0) {
     ROS_FATAL("No data loaded, exiting");
     exit(0);
   }
 
   table_ptr->updateHeader("Interpolating odometry data");
-  std::vector<Lidar>& lidar_vector = lidar_array.getLidarVector();
-  for (Lidar& lidar : lidar_vector) {
-    lidar.setOdomOdomTransforms(odom);
-  }
+  lidar.setOdomOdomTransforms(odom);
 
-  Aligner::Config aligner_config;
-  int knn_batch_size_int = aligner_config.knn_batch_size;
-  nh_private.param("knn_batch_size", knn_batch_size_int, knn_batch_size_int);
-  aligner_config.knn_batch_size = knn_batch_size_int;
-  int knn_k_int = aligner_config.knn_k;
-  nh_private.param("knn_k", knn_k_int, knn_k_int);
-  aligner_config.knn_k = knn_k_int;
-  nh_private.param("knn_max_dist", aligner_config.knn_max_dist,
-                   aligner_config.knn_max_dist);
-  nh_private.param("joint_self_compare", aligner_config.joint_self_compare,
-                   aligner_config.joint_self_compare);
+  Aligner aligner(table_ptr, Aligner::getConfig(&nh_private));
 
-  Aligner aligner(table_ptr, aligner_config);
-
-  table_ptr->updateHeader("Finding individual odometry-lidar transforms");
-  for (Lidar& lidar : lidar_vector) {
-    table_ptr->updateHeader(
-        "Finding individual odometry-lidar transforms: (roll, pitch, yaw)");
-    aligner.lidarOdomTransform(3, &lidar);
-    table_ptr->updateHeader(
-        "Finding individual odometry-lidar transforms: (x, y, roll, pitch, "
-        "yaw)");
-    aligner.lidarOdomTransform(6, &lidar);
-
-    std::string s = lidar.getId();
-    std::replace(s.begin(), s.end(), '/', '_');
-    lidar.saveCombinedPointcloud("/home/z/Desktop/" + s + ".ply");
-  }
-
-  table_ptr->updateHeader(
-      "Finding joint odometry-lidar transforms: (x, y, z, roll, pitch, yaw)");
-  aligner.lidarOdomJointTransform(6, &lidar_array);
-
-  for (Lidar& lidar : lidar_vector) {
-    std::string s = lidar.getId();
-    std::replace(s.begin(), s.end(), '/', '_');
-    lidar.saveCombinedPointcloud("/home/z/Desktop/" + s + ".ply");
-  }
-
-  table_ptr->updateHeader("Saving data");
-  rosbag::Bag bag_out;
-  /*bag_out.open("/home/z/datasets/kitti/out.bag", rosbag::bagmode::Write);
-
-  size_t odom_idx = 0;
-  for (const rosbag::MessageInstance& m : view) {
-    if (!ros::ok()) {
-      break;
-    }
-
-    if (m.getDataType() == std::string("sensor_msgs/PointCloud2")) {
-      Pointcloud pointcloud;
-
-      pcl::fromROSMsg(*(m.instantiate<sensor_msgs::PointCloud2>()), pointcloud);
-
-      pointcloud.header.frame_id += std::string("_out");
-      uint sec = pointcloud.header.stamp / 1000000;
-      uint nsec = 1000 * (pointcloud.header.stamp - 1000000 * sec);
-      ros::Time timestamp(sec, nsec);
-      bag_out.write(m.getTopic() + std::string("_out"), timestamp, pointcloud);
-
-      geometry_msgs::TransformStamped transform_msg;
-      transform_msg.header.frame_id = "odom";
-      transform_msg.header.stamp = timestamp;
-      transform_msg.child_frame_id =
-          (m.instantiate<sensor_msgs::PointCloud2>())->header.frame_id +
-          std::string("_out");
-
-      tf::tfMessage tf_msg;
-      tf::transformKindrToMsg(lidar_array.getLidar(m.getTopic())
-                                  .getOdomLidarTransform()
-                                  .cast<double>(),
-                              &transform_msg.transform);
-      tf_msg.transforms.push_back(transform_msg);
-
-      geometry_msgs::TransformStamped odom_transform_msg;
-      odom_transform_msg.header.frame_id = "world";
-      odom_transform_msg.header.stamp = timestamp;
-      odom_transform_msg.child_frame_id = "odom";
-      tf::transformKindrToMsg(odom.getOdomTransform(timestamp.toSec() * 1000000,
-                                                    odom_idx, &odom_idx)
-                                  .cast<double>(),
-                              &odom_transform_msg.transform);
-      tf_msg.transforms.push_back(odom_transform_msg);
-
-      bag_out.write("/tf", timestamp, tf_msg);
-
-      rosgraph_msgs::Clock clock_msg;
-      clock_msg.clock = timestamp;
-      bag_out.write("/clock", timestamp, clock_msg);
-    }
-  }*/
+  aligner.lidarOdomTransform(&lidar, &odom);
 
   return 0;
 }

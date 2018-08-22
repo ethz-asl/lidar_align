@@ -1,49 +1,13 @@
 #include "lidar_align/sensors.h"
 
+namespace lidar_align {
+
 OdomTformData::OdomTformData(Timestamp timestamp_us, Transform T_o0_ot)
     : timestamp_us_(timestamp_us), T_o0_ot_(T_o0_ot) {}
 
 const Transform& OdomTformData::getTransform() const { return T_o0_ot_; }
 
 const Timestamp& OdomTformData::getTimestamp() const { return timestamp_us_; }
-
-void Odom::addRawOdomData(const Timestamp& timestamp_us,
-                          const Scalar& linear_velocity,
-                          const Scalar& angular_velocity) {
-  static Scalar prev_linear_velocity;
-  static Scalar prev_angular_velocity;
-  static Timestamp prev_timestamp_us;
-  static Transform T;
-
-  if (!data_.empty()) {
-    // only measured over 1 timestep
-    Scalar average_linear_velocity =
-        (linear_velocity + prev_linear_velocity) / 2.0;
-    Scalar average_angular_velocity =
-        (angular_velocity + prev_angular_velocity) / 2.0;
-    Scalar time_diff =
-        static_cast<Scalar>(timestamp_us - prev_timestamp_us) / 1000000.0;
-
-    if (time_diff <= 0) {
-      throw std::runtime_error(
-          "New odom reading occured earlier then previous reading");
-    }
-    if (!std::isfinite(average_linear_velocity) ||
-        !std::isfinite(average_angular_velocity)) {
-      throw std::runtime_error("Non-finite velocity values given");
-    }
-
-    T = T * Transform(
-                Transform::Rotation(AngleAxis(
-                    time_diff * average_angular_velocity, 0.0, 0.0, 1.0)),
-                Transform::Position(time_diff * average_linear_velocity, 0, 0));
-  }
-
-  data_.emplace_back(timestamp_us, T);
-  prev_linear_velocity = linear_velocity;
-  prev_angular_velocity = angular_velocity;
-  prev_timestamp_us = timestamp_us;
-}
 
 void Odom::addTransformData(const Timestamp& timestamp_us, const Transform& T) {
   data_.emplace_back(timestamp_us, T);
@@ -81,53 +45,66 @@ Transform Odom::getOdomTransform(const Timestamp timestamp_us,
   return out;
 }
 
-bool Odom::getFinalAngularVeloctiy(Scalar* angular_velocity) const {
-  if (data_.size() < 2) {
-    return false;
-  }
-
-  const OdomTformData& last_odom = data_.back();
-  const OdomTformData& second_to_last_odom = data_.rbegin()[1];
-
-  Scalar angle_diff = last_odom.getTransform().getRotation().getDisparityAngle(
-      second_to_last_odom.getTransform().getRotation());
-  Scalar time_diff = static_cast<Scalar>(last_odom.getTimestamp() -
-                                         second_to_last_odom.getTimestamp()) /
-                     1000000.0;
-  ;
-  *angular_velocity = angle_diff / time_diff;
-  return true;
-}
-
 Scan::Scan(const Pointcloud& in, const Config& config)
     : timestamp_us_(in.header.stamp), odom_transform_set_(false) {
   std::default_random_engine generator(in.header.stamp);
   std::uniform_real_distribution<float> distribution(0, 1);
 
-  Pointcloud subsampled_cloud;
-  Pointcloud::ConstPtr in_ptr(&in, [](const Pointcloud*) {});
-
-  // Create the filtering object
-  pcl::VoxelGrid<Point> sor;
-  sor.setInputCloud(in_ptr);
-  sor.setLeafSize(config.voxel_size, config.voxel_size, config.voxel_size);
-  sor.filter(subsampled_cloud);
-
-  for (const Point& point : subsampled_cloud) {
-    if (distribution(generator) < config.keep_points_ratio) {
+  for (const Point& point : in) {
+    if ((point.intensity > config.min_return_intensity) &&
+        distribution(generator) < config.keep_points_ratio) {
       float sq_dist = point.x * point.x + point.y * point.y + point.z * point.z;
       if (std::isfinite(sq_dist) &&
           (sq_dist > (config.min_point_distance * config.min_point_distance)) &&
           (sq_dist < (config.max_point_distance * config.max_point_distance))) {
-        raw_points_.push_back(point);
+        Point store_point = point;
+
+        // 100000 * 600 / pi
+        const double timing_factor = 19098593.171 / config.lidar_rpm;
+
+        if (config.motion_compensation) {
+          store_point.intensity = std::atan2(point.x, point.y);
+
+          // cut out wrap zone
+          if (std::abs(store_point.intensity) > 3.0) {
+            continue;
+          }
+          store_point.intensity *= timing_factor;
+
+        } else {
+          store_point.intensity = 0.0;
+        }
+        if (!config.clockwise_lidar) {
+          store_point.intensity *= -1.0;
+        }
+        raw_points_.push_back(store_point);
       }
     }
   }
   raw_points_.header = in.header;
 }
 
-void Scan::setOdomTransform(const Odom& odom, const size_t start_idx,
-                            size_t* match_idx) {
+Scan::Config Scan::getConfig(ros::NodeHandle* nh) {
+  Scan::Config config;
+  nh->param("min_point_distance", config.min_point_distance,
+            config.min_point_distance);
+  nh->param("max_point_distance", config.max_point_distance,
+            config.max_point_distance);
+  nh->param("keep_points_ratio", config.keep_points_ratio,
+            config.keep_points_ratio);
+  nh->param("min_return_intensity", config.min_return_intensity,
+            config.min_return_intensity);
+
+  nh->param("clockwise_lidar", config.clockwise_lidar, config.clockwise_lidar);
+  nh->param("motion_compensation", config.motion_compensation,
+            config.motion_compensation);
+  nh->param("lidar_rpm", config.lidar_rpm, config.lidar_rpm);
+
+  return config;
+}
+
+void Scan::setOdomTransform(const Odom& odom, const double time_offset,
+                            const size_t start_idx, size_t* match_idx) {
   T_o0_ot_.clear();
 
   size_t i = 0;
@@ -137,8 +114,9 @@ void Scan::setOdomTransform(const Odom& odom, const size_t start_idx,
     // will have quite low precision and when it is cast back to a long int
     // will be a very different value (about 2 to 3 million lower in some
     // quick tests). This difference will then break everything.
-    Timestamp point_ts_us =
-        timestamp_us_ + static_cast<Timestamp>(std::round(point.intensity));
+    Timestamp point_ts_us = timestamp_us_ +
+                            static_cast<Timestamp>(1000000.0 * time_offset) +
+                            static_cast<Timestamp>(point.intensity);
     T_o0_ot_.push_back(
         odom.getOdomTransform(point_ts_us, start_idx, match_idx));
   }
@@ -191,10 +169,10 @@ void Lidar::saveCombinedPointcloud(const std::string& file_path) const {
   writer.write(file_path, combined, true);
 }
 
-void Lidar::setOdomOdomTransforms(const Odom& odom) {
+void Lidar::setOdomOdomTransforms(const Odom& odom, const double time_offset) {
   size_t idx = 0;
   for (Scan& scan : scans_) {
-    scan.setOdomTransform(odom, idx, &idx);
+    scan.setOdomTransform(odom, time_offset, idx, &idx);
   }
 }
 
@@ -202,50 +180,4 @@ void Lidar::setOdomLidarTransform(const Transform& T_o_l) { T_o_l_ = T_o_l; }
 
 const Transform& Lidar::getOdomLidarTransform() const { return T_o_l_; }
 
-const size_t LidarArray::getNumberOfLidars() const {
-  return lidar_vector_.size();
-}
-
-const Lidar& LidarArray::getLidar(const LidarId& lidar_id) const {
-  return lidar_vector_[id_to_idx_map_.at(lidar_id)];
-}
-
-bool LidarArray::hasAtleastNScans(const size_t n) const {
-  if (lidar_vector_.empty()) {
-    return false;
-  }
-  for (const Lidar& lidar : lidar_vector_) {
-    if (n > lidar.getNumberOfScans()) {
-      return false;
-    }
-  }
-  return true;
-}
-
-void LidarArray::addPointcloud(const LidarId& lidar_id,
-                               const Pointcloud& pointcloud,
-                               const Scan::Config& config) {
-  if (id_to_idx_map_.count(lidar_id) == 0) {
-    lidar_vector_.emplace_back(lidar_id);
-    id_to_idx_map_[lidar_id] = lidar_vector_.size() - 1;
-  }
-  lidar_vector_[id_to_idx_map_.at(lidar_id)].addPointcloud(pointcloud, config);
-}
-
-void LidarArray::getCombinedPointcloud(Pointcloud* pointcloud) const {
-  for (const Lidar& lidar : lidar_vector_) {
-    lidar.getCombinedPointcloud(pointcloud);
-  }
-}
-
-std::vector<Lidar>& LidarArray::getLidarVector() { return lidar_vector_; }
-
-const std::vector<Lidar>& LidarArray::getLidarVector() const {
-  return lidar_vector_;
-}
-
-void LidarArray::setOdomOdomTransforms(const Odom& odom) {
-  for (Lidar& lidar : lidar_vector_) {
-    lidar.setOdomOdomTransforms(odom);
-  }
-}
+}  // namespace lidar_align

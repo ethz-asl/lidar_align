@@ -2,6 +2,7 @@
 #define LIDAR_ALIGN_ALIGNER_H_
 
 #include <ncurses.h>
+#include <ros/ros.h>
 #include <future>
 #include <limits>
 #include <nlopt.hpp>
@@ -9,35 +10,41 @@
 #include "lidar_align/sensors.h"
 #include "lidar_align/table.h"
 
+namespace lidar_align {
+
 class Aligner {
  public:
   struct Config {
-    // set default values
-    Config() {
-      knn_batch_size = 5000;
-      knn_k = 5;
-      knn_max_dist = 0.1;
-    }
+    bool local = true;
+    std::vector<double> inital_guess{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    std::vector<double> range{1.0, 1.0, 1.0, 3.15, 3.15, 3.15, 0.0};
+    double max_evals = 1000;
+    double xtol = 0.000001;
 
-    size_t knn_batch_size;
-    size_t knn_k;
-    float knn_max_dist;
-    bool joint_self_compare;
+    int knn_batch_size = 1000;
+    int knn_k = 1;
+    float knn_max_dist = 0.1;
+    bool time_cal = false;
+
+    std::string output_pointcloud_path = "";
+    std::string output_calibration_path = "";
   };
 
-  Aligner(const std::shared_ptr<Table>& table_ptr,
-          const Config& config = Config());
+  struct OptData {
+    Lidar* lidar;
+    Odom* odom;
+    Aligner* aligner;
+    std::shared_ptr<Table> table;
+    bool time_cal;
+  };
 
-  void lidarOdomTransform(const size_t num_params, Lidar* lidar_ptr);
+  Aligner(const std::shared_ptr<Table>& table_ptr, const Config& config);
 
-  void lidarOdomJointTransform(const size_t num_params,
-                               LidarArray* lidar_array_ptr);
+  static Config getConfig(ros::NodeHandle* nh);
+
+  void lidarOdomTransform(Lidar* lidar, Odom* odom);
 
  private:
-  void updateTableRow(const Lidar& lidar);
-
-  void updateTableFooter(const Scalar error);
-
   static Scalar kNNError(
       const pcl::KdTreeFLANN<Point>& kdtree, const Pointcloud& pointcloud,
       const size_t k, const float max_dist, const size_t start_idx = 0,
@@ -48,26 +55,13 @@ class Aligner {
 
   Scalar lidarOdomKNNError(const Lidar& lidar) const;
 
-  Scalar lidarOdomKNNError(const LidarArray& lidar_array) const;
-
   static double LidarOdomMinimizer(const std::vector<double>& x,
                                    std::vector<double>& grad, void* f_data);
-
-  static double LidarOdomJointMinimizer(const std::vector<double>& x,
-                                        std::vector<double>& grad,
-                                        void* f_data);
-
-  static Transform vecToTransform(const std::vector<double>& vec,
-                                  const Transform& inital_T);
-
-  static std::vector<double> transformToVec(const Transform& T,
-                                            size_t vec_length = 6);
-
-  static std::vector<double> createRangeVec(const std::vector<double>& full_vec,
-                                            size_t vec_length = 6);
 
   Config config_;
   std::shared_ptr<Table> table_ptr_;
 };
+
+}  // namespace lidar_align
 
 #endif  // LIDAR_ALIGN_ALIGNER_H_
