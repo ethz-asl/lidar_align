@@ -3,6 +3,8 @@
 
 #include <ncurses.h>
 
+namespace lidar_align {
+
 class Table {
  public:
   Table(const std::vector<std::string>& col_names, size_t names_width,
@@ -93,5 +95,7 @@ class Table {
   size_t names_width_;
   size_t cell_width_;
 };
+
+}  // namespace lidar_align
 
 #endif

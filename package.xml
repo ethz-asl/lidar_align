@@ -2,7 +2,7 @@
 <package format="2">
   <name>lidar_align</name>
   <version>0.0.0</version>
-  <description>Aligns overlapping 3D lidar</description>
+  <description>Aligns 3D lidars to a 6-dof pose source</description>
 
   <maintainer email="ztaylor@ethz.ch">Zachary Taylor</maintainer>
   

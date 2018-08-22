@@ -3,16 +3,17 @@
 
 #include <random>
 
-
-#include <ros/ros.h>
 #include <pcl/common/transforms.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <ros/ros.h>
 
 #include <kindr/minimal/quat-transformation.h>
+
+namespace lidar_align {
 
 typedef std::string LidarId;
 typedef float Scalar;
@@ -52,29 +53,17 @@ class Odom {
 class Scan {
  public:
   struct Config {
-    // set default values
-    Config() {
-      min_point_distance = 0;
-      max_point_distance = 100;
-      keep_points_ratio = 0.01;
-      min_return_intensity = 5.0;
+    Scalar min_point_distance = 0.0;
+    Scalar max_point_distance = 100.0;
+    Scalar keep_points_ratio = 0.01;
+    Scalar min_return_intensity = 5.0;
 
-      clockwise_lidar = false;
-      motion_compensation = false;
-      lidar_rpm = 600.0;
-    }
-
-    Scalar min_point_distance;
-    Scalar max_point_distance;
-    Scalar keep_points_ratio;
-    Scalar min_return_intensity;
-
-    bool clockwise_lidar;
-    bool motion_compensation;
-    Scalar lidar_rpm;
+    bool clockwise_lidar = false;
+    bool motion_compensation = false;
+    Scalar lidar_rpm = 600.0;
   };
 
-  Scan(const Pointcloud& pointcloud, const Config& config = Config());
+  Scan(const Pointcloud& pointcloud, const Config& config);
 
   static Config getConfig(ros::NodeHandle* nh);
 
@@ -126,5 +115,7 @@ class Lidar {
 
   std::vector<Scan> scans_;
 };
+
+}  // namespace lidar_align
 
 #endif

@@ -1,5 +1,7 @@
 #include "lidar_align/sensors.h"
 
+namespace lidar_align {
+
 OdomTformData::OdomTformData(Timestamp timestamp_us, Transform T_o0_ot)
     : timestamp_us_(timestamp_us), T_o0_ot_(T_o0_ot) {}
 
@@ -177,3 +179,5 @@ void Lidar::setOdomOdomTransforms(const Odom& odom, const double time_offset) {
 void Lidar::setOdomLidarTransform(const Transform& T_o_l) { T_o_l_ = T_o_l; }
 
 const Transform& Lidar::getOdomLidarTransform() const { return T_o_l_; }
+
+}  // namespace lidar_align

@@ -1,5 +1,7 @@
 #include "lidar_align/aligner.h"
 
+namespace lidar_align {
+
 Aligner::Aligner(const std::shared_ptr<Table>& table_ptr, const Config& config)
     : table_ptr_(table_ptr), config_(config){};
 
@@ -175,3 +177,5 @@ void Aligner::lidarOdomTransform(Lidar* lidar, Odom* odom) {
     file.close();
   }
 }
+
+}  // namespace lidar_align

@@ -7,6 +7,8 @@
 #include "lidar_align/sensors.h"
 #include "lidar_align/table.h"
 
+using namespace lidar_align;
+
 std::shared_ptr<Table> setupTable() {
   std::vector<std::string> column_names;
   column_names.push_back("x");

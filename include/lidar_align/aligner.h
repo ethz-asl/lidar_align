@@ -2,48 +2,32 @@
 #define LIDAR_ALIGN_ALIGNER_H_
 
 #include <ncurses.h>
+#include <ros/ros.h>
 #include <future>
 #include <limits>
 #include <nlopt.hpp>
-#include <ros/ros.h>
 
 #include "lidar_align/sensors.h"
 #include "lidar_align/table.h"
 
+namespace lidar_align {
+
 class Aligner {
  public:
   struct Config {
-    // set default values
-    Config() {
-      local = true;
-      inital_guess = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-      range = {1.0, 1.0, 1.0, 3.15, 3.15, 3.15, 0.0};
+    bool local = true;
+    std::vector<double> inital_guess{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    std::vector<double> range{1.0, 1.0, 1.0, 3.15, 3.15, 3.15, 0.0};
+    double max_evals = 1000;
+    double xtol = 0.000001;
 
-      max_evals = 1000;
-      xtol = 0.000001;
+    int knn_batch_size = 1000;
+    int knn_k = 1;
+    float knn_max_dist = 0.1;
+    bool time_cal = false;
 
-      knn_batch_size = 1000;
-      knn_k = 1;
-      knn_max_dist = 0.1;
-      time_cal = false;
-
-      output_pointcloud_path = "";
-      output_calibration_path = "";
-    }
-
-    bool local;
-    std::vector<double> inital_guess;
-    std::vector<double> range;
-    double max_evals;
-    double xtol;
-
-    int knn_batch_size;
-    int knn_k;
-    float knn_max_dist;
-    bool time_cal;
-
-    std::string output_pointcloud_path;
-    std::string output_calibration_path;
+    std::string output_pointcloud_path = "";
+    std::string output_calibration_path = "";
   };
 
   struct OptData {
@@ -54,8 +38,7 @@ class Aligner {
     bool time_cal;
   };
 
-  Aligner(const std::shared_ptr<Table>& table_ptr,
-          const Config& config = Config());
+  Aligner(const std::shared_ptr<Table>& table_ptr, const Config& config);
 
   static Config getConfig(ros::NodeHandle* nh);
 
@@ -78,5 +61,7 @@ class Aligner {
   Config config_;
   std::shared_ptr<Table> table_ptr_;
 };
+
+}  // namespace lidar_align
 
 #endif  // LIDAR_ALIGN_ALIGNER_H_

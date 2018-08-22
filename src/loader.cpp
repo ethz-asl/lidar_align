@@ -7,6 +7,8 @@
 
 #include "lidar_align/loader.h"
 
+namespace lidar_align {
+
 Loader::Loader(const std::shared_ptr<Table>& table_ptr, const Config& config)
     : table_ptr_(table_ptr), config_(config) {}
 
@@ -146,3 +148,5 @@ bool Loader::getNextCSVTransform(std::istream& str, Timestamp* stamp,
 
   return true;
 }
+
+}  // namespace lidar_align
