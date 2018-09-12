@@ -31,25 +31,33 @@ int main(int argc, char** argv) {
 
   Loader loader(table_ptr, Loader::getConfig(&nh_private));
 
+  Lidar lidar;
+  Odom odom;
+
   std::string input_bag_path;
   if (!nh_private.getParam("input_bag_path", input_bag_path)) {
     ROS_FATAL("Could not find input_bag_path parameter, exiting");
     exit(EXIT_FAILURE);
+  } else if (!loader.loadPointcloudFromROSBag(
+                 input_bag_path, Scan::getConfig(&nh_private), &lidar)) {
+    ROS_FATAL("Error loading pointclouds from ROS bag.");
+    exit(0);
   }
 
+  bool transforms_from_csv;
+  nh_private.param("transforms_from_csv", transforms_from_csv, false);
   std::string input_csv_path;
-  if (!nh_private.getParam("input_csv_path", input_csv_path)) {
-    ROS_FATAL("Could not find input_csv_path parameter, exiting");
-    exit(EXIT_FAILURE);
-  }
-
-  Lidar lidar;
-  Odom odom;
-
-  if (!loader.loadPointcloudFromROSBag(input_bag_path,
-                                       Scan::getConfig(&nh_private), &lidar) ||
-      !loader.loadTformFromMaplabCSV(input_csv_path, &odom)) {
-    ROS_FATAL("Data loading failed");
+  if (transforms_from_csv) {
+    if (transforms_from_csv &&
+        !nh_private.getParam("input_csv_path", input_csv_path)) {
+      ROS_FATAL("Could not find input_csv_path parameter, exiting");
+      exit(EXIT_FAILURE);
+    } else if (!loader.loadTformFromMaplabCSV(input_bag_path, &odom)) {
+      ROS_FATAL("Error loading transforms from CSV.");
+      exit(0);
+    }
+  } else if (!loader.loadTformFromROSBag(input_bag_path, &odom)) {
+    ROS_FATAL("Error loading transforms from ROS bag.");
     exit(0);
   }
 

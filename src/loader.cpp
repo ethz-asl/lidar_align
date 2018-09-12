@@ -18,6 +18,51 @@ Loader::Config Loader::getConfig(ros::NodeHandle* nh) {
   return config;
 }
 
+void Loader::parsePointcloudMsg(const sensor_msgs::PointCloud2 msg,
+                                LoaderPointcloud* pointcloud) {
+  bool has_timing = false;
+  bool has_intensity = false;
+  for (const sensor_msgs::PointField& field : msg.fields) {
+    if (field.name == "time_offset_us") {
+      has_timing = true;
+    } else if (field.name == "intensity") {
+      has_intensity = true;
+    }
+  }
+
+  if (has_timing) {
+    pcl::fromROSMsg(msg, *pointcloud);
+    return;
+  } else if (has_intensity) {
+    Pointcloud raw_pointcloud;
+    pcl::fromROSMsg(msg, raw_pointcloud);
+
+    for (const Point& raw_point : raw_pointcloud) {
+      PointAllFields point;
+      point.x = raw_point.x;
+      point.y = raw_point.y;
+      point.z = raw_point.z;
+      point.intensity = raw_point.intensity;
+
+      pointcloud->push_back(point);
+    }
+    pointcloud->header = raw_pointcloud.header;
+  } else {
+    pcl::PointCloud<pcl::PointXYZ> raw_pointcloud;
+    pcl::fromROSMsg(msg, raw_pointcloud);
+
+    for (const pcl::PointXYZ& raw_point : raw_pointcloud) {
+      PointAllFields point;
+      point.x = raw_point.x;
+      point.y = raw_point.y;
+      point.z = raw_point.z;
+
+      pointcloud->push_back(point);
+    }
+    pointcloud->header = raw_pointcloud.header;
+  }
+}
+
 bool Loader::loadPointcloudFromROSBag(const std::string& bag_path,
                                       const Scan::Config& scan_config,
                                       Lidar* lidar) {
@@ -39,8 +84,9 @@ bool Loader::loadPointcloudFromROSBag(const std::string& bag_path,
     ss << "Loading scan: " << scan_num++ << " from ros bag";
     table_ptr_->updateHeader(ss.str());
 
-    Pointcloud pointcloud;
-    pcl::fromROSMsg(*(m.instantiate<sensor_msgs::PointCloud2>()), pointcloud);
+    LoaderPointcloud pointcloud;
+    parsePointcloudMsg(*(m.instantiate<sensor_msgs::PointCloud2>()),
+                       &pointcloud);
 
     lidar->addPointcloud(pointcloud, scan_config);
 
