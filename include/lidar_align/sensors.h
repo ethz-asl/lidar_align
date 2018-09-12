@@ -22,8 +22,19 @@ typedef long long int Timestamp;
 
 typedef kindr::minimal::QuatTransformationTemplate<Scalar> Transform;
 typedef kindr::minimal::AngleAxisTemplate<Scalar> AngleAxis;
+
+struct EIGEN_ALIGN16 PointAllFields {
+  PCL_ADD_POINT4D;
+  int32_t time_offset_us;
+  uint16_t reflectivity;
+  uint16_t intensity;
+  uint8_t ring;
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
+
 typedef pcl::PointXYZI Point;
 typedef pcl::PointCloud<Point> Pointcloud;
+typedef pcl::PointCloud<PointAllFields> LoaderPointcloud;
 
 class OdomTformData {
  public:
@@ -56,14 +67,15 @@ class Scan {
     Scalar min_point_distance = 0.0;
     Scalar max_point_distance = 100.0;
     Scalar keep_points_ratio = 0.01;
-    Scalar min_return_intensity = 5.0;
+    Scalar min_return_intensity = -1.0;
 
+    bool estimate_point_times = false;
     bool clockwise_lidar = false;
-    bool motion_compensation = false;
+    bool motion_compensation = true;
     Scalar lidar_rpm = 600.0;
   };
 
-  Scan(const Pointcloud& pointcloud, const Config& config);
+  Scan(const LoaderPointcloud& pointcloud, const Config& config);
 
   static Config getConfig(ros::NodeHandle* nh);
 
@@ -97,7 +109,7 @@ class Lidar {
 
   const LidarId& getId() const;
 
-  void addPointcloud(const Pointcloud& pointcloud,
+  void addPointcloud(const LoaderPointcloud& pointcloud,
                      const Scan::Config& config = Scan::Config());
 
   void setOdomOdomTransforms(const Odom& odom, const double time_offset = 0.0);

@@ -45,37 +45,37 @@ Transform Odom::getOdomTransform(const Timestamp timestamp_us,
   return out;
 }
 
-Scan::Scan(const Pointcloud& in, const Config& config)
+Scan::Scan(const LoaderPointcloud& in, const Config& config)
     : timestamp_us_(in.header.stamp), odom_transform_set_(false) {
   std::default_random_engine generator(in.header.stamp);
   std::uniform_real_distribution<float> distribution(0, 1);
 
-  for (const Point& point : in) {
+  for (const PointAllFields& point : in) {
     if ((point.intensity > config.min_return_intensity) &&
         distribution(generator) < config.keep_points_ratio) {
       float sq_dist = point.x * point.x + point.y * point.y + point.z * point.z;
       if (std::isfinite(sq_dist) &&
           (sq_dist > (config.min_point_distance * config.min_point_distance)) &&
           (sq_dist < (config.max_point_distance * config.max_point_distance))) {
-        Point store_point = point;
+        Point store_point;
+        store_point.x = point.x;
+        store_point.y = point.y;
+        store_point.z = point.z;
+        store_point.intensity = point.time_offset_us;
 
-        // 100000 * 600 / pi
-        const double timing_factor = 19098593.171 / config.lidar_rpm;
-
-        if (config.motion_compensation) {
-          store_point.intensity = std::atan2(point.x, point.y);
+        if (config.estimate_point_times) {
+          // 100000 * 600 / pi
+          const double timing_factor = 19098593.171 / config.lidar_rpm;
+          const double angle = std::atan2(point.x, point.y);
 
           // cut out wrap zone
-          if (std::abs(store_point.intensity) > 3.0) {
+          if (std::abs(angle) > 3.0) {
             continue;
           }
-          store_point.intensity *= timing_factor;
-
-        } else {
-          store_point.intensity = 0.0;
-        }
-        if (!config.clockwise_lidar) {
-          store_point.intensity *= -1.0;
+          store_point.intensity = angle * timing_factor;
+          if (!config.clockwise_lidar) {
+            store_point.intensity *= -1.0;
+          }
         }
         raw_points_.push_back(store_point);
       }
@@ -95,6 +95,8 @@ Scan::Config Scan::getConfig(ros::NodeHandle* nh) {
   nh->param("min_return_intensity", config.min_return_intensity,
             config.min_return_intensity);
 
+  nh->param("estimate_point_times", config.estimate_point_times,
+            config.estimate_point_times);
   nh->param("clockwise_lidar", config.clockwise_lidar, config.clockwise_lidar);
   nh->param("motion_compensation", config.motion_compensation,
             config.motion_compensation);
@@ -117,6 +119,7 @@ void Scan::setOdomTransform(const Odom& odom, const double time_offset,
     Timestamp point_ts_us = timestamp_us_ +
                             static_cast<Timestamp>(1000000.0 * time_offset) +
                             static_cast<Timestamp>(point.intensity);
+
     T_o0_ot_.push_back(
         odom.getOdomTransform(point_ts_us, start_idx, match_idx));
   }
@@ -137,11 +140,13 @@ void Scan::getTimeAlignedPointcloud(const Transform& T_o_l,
     Transform T_o_lt = T_o0_ot_[i] * T_o_l;
 
     Eigen::Affine3f pcl_transform;
-    pcl_transform.matrix() = T_o_lt.cast<float>().getTransformationMatrix();
 
+    pcl_transform.matrix() = T_o_lt.cast<float>().getTransformationMatrix();
     pointcloud->push_back(pcl::transformPoint(raw_points_[i], pcl_transform));
   }
 }
+
+const Pointcloud& Scan::getRawPointcloud() const { return raw_points_; }
 
 Lidar::Lidar(const LidarId& lidar_id) : lidar_id_(lidar_id){};
 
@@ -149,7 +154,7 @@ const size_t Lidar::getNumberOfScans() const { return scans_.size(); }
 
 const LidarId& Lidar::getId() const { return lidar_id_; }
 
-void Lidar::addPointcloud(const Pointcloud& pointcloud,
+void Lidar::addPointcloud(const LoaderPointcloud& pointcloud,
                           const Scan::Config& config) {
   scans_.emplace_back(pointcloud, config);
 }
@@ -164,7 +169,6 @@ void Lidar::saveCombinedPointcloud(const std::string& file_path) const {
   Pointcloud combined;
 
   getCombinedPointcloud(&combined);
-
   pcl::PLYWriter writer;
   writer.write(file_path, combined, true);
 }
