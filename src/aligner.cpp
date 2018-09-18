@@ -164,16 +164,62 @@ void Aligner::lidarOdomTransform(Lidar* lidar, Odom* odom) {
   }
 
   if (!config_.output_calibration_path.empty()) {
+    const Transform& T = lidar->getOdomLidarTransform();
     table_ptr_->updateHeader("Saving calibration file");
     std::ofstream file;
     file.open(config_.output_calibration_path, std::ofstream::out);
-    file << "T Vector: ";
-    for (double value : x) {
-      file << value << " ";
+
+    file << "Active Transformation Vector (x,y,z,rx,ry,rz) from Odometry Frame "
+            "to Lidar frame:"
+         << std::endl
+         << "[";
+    file << x[0] << ", ";
+    file << x[1] << ", ";
+    file << x[2] << ", ";
+    file << x[3] << ", ";
+    file << x[4] << ", ";
+    file << x[5] << "]" << std::endl << std::endl;
+
+    file << "Active Transformation Matrix from Odometry Frame to Lidar frame:"
+         << std::endl;
+    file << T << std::endl << std::endl;
+
+    file << "Active Translation Vector (x,y,z) from Odometry Frame to Lidar "
+            "frame:"
+         << std::endl
+         << "[";
+    file << T.getPosition().x() << ", ";
+    file << T.getPosition().y() << ", ";
+    file << T.getPosition().z() << "]" << std::endl << std::endl;
+
+    file << "Active Hamiltonen Quaternion (w,x,y,z) from Odometry Frame to "
+            "Lidar frame:"
+         << std::endl
+         << "[";
+    file << T.getRotation().w() << ", ";
+    file << T.getRotation().x() << ", ";
+    file << T.getRotation().y() << ", ";
+    file << T.getRotation().z() << "]" << std::endl << std::endl;
+
+    if (num_params == 7) {
+      file << "Time offset that must be added to lidar timestamps in seconds:"
+           << std::endl
+           << x[6] << std::endl
+           << std::endl;
     }
-    file << std::endl;
-    file << "T: " << std::endl;
-    file << lidar->getOdomLidarTransform() << std::endl;
+
+    file << "ROS Static TF Publisher: <node pkg=\"tf\" "
+            "type=\"static_transform_publisher\" "
+            "name=\"odom_lidar_broadcaster\" args=\"";
+    file << T.getPosition().x() << " ";
+    file << T.getPosition().y() << " ";
+    file << T.getPosition().z() << " ";
+    file << T.getRotation().x() << " ";
+    file << T.getRotation().y() << " ";
+    file << T.getRotation().z() << " ";
+    file << T.getRotation().w() << " ODOM_FRAME LIDAR_FRAME 100\" />"
+         << std::endl;
+
     file.close();
   }
 }
