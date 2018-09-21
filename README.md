@@ -1,7 +1,7 @@
 # lidar_align
 
 ## A simple method for finding the extrinsic calibration between a 3D lidar and a 6-dof pose sensor
-The method makes use of the property that pointclouds from lidars appear more 'crisp' when the calibration is correct. The system attempts to find the transform between a lidar and the given poses such that the distance between any two lidar points in the resulting fused pointcloud is minimized. Currently only supports poses provided by Maplab.
+The method makes use of the property that pointclouds from lidars appear more 'crisp' when the calibration is correct. The system attempts to find the transform between a lidar and the given poses such that the distance between any two lidar points in the resulting fused pointcloud is minimized. Poses can be provided as a TransformStamped message or in Maplab's CSV format
 
 This library is pretty new and only tested on a couple of datasets, so expect some issues when you first run it.
 
