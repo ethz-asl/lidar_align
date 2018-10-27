@@ -48,11 +48,10 @@ int main(int argc, char** argv) {
   nh_private.param("transforms_from_csv", transforms_from_csv, false);
   std::string input_csv_path;
   if (transforms_from_csv) {
-    if (transforms_from_csv &&
-        !nh_private.getParam("input_csv_path", input_csv_path)) {
+    if (!nh_private.getParam("input_csv_path", input_csv_path)) {
       ROS_FATAL("Could not find input_csv_path parameter, exiting");
       exit(EXIT_FAILURE);
-    } else if (!loader.loadTformFromMaplabCSV(input_bag_path, &odom)) {
+    } else if (!loader.loadTformFromMaplabCSV(input_csv_path, &odom)) {
       ROS_FATAL("Error loading transforms from CSV.");
       exit(0);
     }
