@@ -11,6 +11,22 @@ The estimation is usually performed in two stages.
 * First set `local` to `false` and `range` to encompass all sane values for example `[0.5, 0.5, 0.5, 3.2, 3.2, 3.2, 0.1]` will explore all rotations, plus all translations within 0.5m. The result of this optimization will get you in the ballpark but will most likely have significant error.
 * Secondly take the solution from above and use this to set the `inital_guess`, then rerun with `local` set to true and a smaller range for example `[0.1, 0.1, 0.1, 0.5, 0.5, 0.5, 0.01]`.
 
+## CSV format
+
+| Column | Description |
+|--:|:--|
+1 | timestamp ns 
+2 | vertex index (not used) 
+3 | position x
+4 | position y
+5 | position z 
+6 | orientation quaternion w 
+7 | orientation quaternion x
+8 | orientation quaternion y 
+9 | orientation quaternion z 
+
+Note that Maplab has two CSV exporters. This file-format is the same as produced by [exportPosesVelocitiesAndBiasesToCsv](https://github.com/ethz-asl/maplab/blob/master/console-plugins/vi-map-data-import-export-plugin/src/export-vertex-data.cc#L39) but differs from the output of [exportVerticesAndTracksToCsv](https://github.com/ethz-asl/maplab/blob/master/tools/csv-export/src/csv-export.cc#L35)
+
 ## Deps
 This package depends on ROS, PCL and ncurses. Ncurses can be installed with `sudo apt install libncurses5-dev`
 
