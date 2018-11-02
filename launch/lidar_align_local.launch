@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
   <node pkg="lidar_align" name="lidar_align" type="lidar_align" launch-prefix="xterm -hold -e ">
-    <param name="input_bag_path" value="/home/z/Downloads/extrinsics.bag" />
-    <param name="input_csv_path" value="/home/z/Downloads/calib0_opt_poses.csv" />
+    <param name="input_bag_path" value="PATH/TO/YOUR/DATA.bag" />
+    <param name="input_csv_path" value="/PATH/TO/YOUR/POSES.csv" />
     <param name="output_pointcloud_path" value="$(find lidar_align)/results/$(anon lidar_points).ply" />
     <param name="output_calibration_path" value="$(find lidar_align)/results/$(anon calibration).txt" />
 
