@@ -170,7 +170,7 @@ void Aligner::lidarOdomTransform(Lidar* lidar, Odom* odom) {
     file.open(config_.output_calibration_path, std::ofstream::out);
 
     file << "Active Transformation Vector (x,y,z,rx,ry,rz) from Odometry Frame "
-            "to Lidar frame:"
+            "to Lidar Frame:"
          << std::endl
          << "[";
     file << x[0] << ", ";
@@ -180,12 +180,12 @@ void Aligner::lidarOdomTransform(Lidar* lidar, Odom* odom) {
     file << x[4] << ", ";
     file << x[5] << "]" << std::endl << std::endl;
 
-    file << "Active Transformation Matrix from Odometry Frame to Lidar frame:"
+    file << "Active Transformation Matrix from Odometry Frame to Lidar Frame:"
          << std::endl;
     file << T << std::endl << std::endl;
 
     file << "Active Translation Vector (x,y,z) from Odometry Frame to Lidar "
-            "frame:"
+            "Frame:"
          << std::endl
          << "[";
     file << T.getPosition().x() << ", ";
@@ -193,7 +193,7 @@ void Aligner::lidarOdomTransform(Lidar* lidar, Odom* odom) {
     file << T.getPosition().z() << "]" << std::endl << std::endl;
 
     file << "Active Hamiltonen Quaternion (w,x,y,z) from Odometry Frame to "
-            "Lidar frame:"
+            "Lidar Frame:"
          << std::endl
          << "[";
     file << T.getRotation().w() << ", ";
