@@ -60,7 +60,7 @@ This package depends on ROS, PCL and ncurses. Ncurses can be installed with `sud
 | `max_baseline` |  Maximum distance between sensors to consider during the global optimization stage. | 1.0 |
 | `max_time_offset` |  Maximum time offset between sensor clocks in seconds. | 0.1 |
 | `angular_range` | Search range in radians around the `inital_guess` during the local optimization stage. | 0.5 |
-| `translational_range` | Search range around the `inital_guess` during the local optimization stage. | 0.25 |
+| `translational_range` | Search range around the `inital_guess` during the local optimization stage. | 0.5 |
 | `max_evals` | Maximum number of function evaluations to run | 2000 |
 | `xtol` | Tolerance of final solution | 0.000001 |
 | `knn_batch_size` | Number of points to send to each thread when finding nearest points | 1000 |
