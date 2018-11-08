@@ -6,10 +6,7 @@ The method makes use of the property that pointclouds from lidars appear more 'c
 This library is pretty new and only tested on a couple of datasets, so expect some issues when you first run it.
 
 ## Estimation proceedure
-The estimation is usually performed in two stages.
-
-* First set `local` to `false` and `range` to encompass all sane values for example `[0.5, 0.5, 0.5, 3.2, 3.2, 3.2, 0.1]` will explore all rotations, plus all translations within 0.5m. The result of this optimization will get you in the ballpark but will most likely have significant error.
-* Secondly take the solution from above and use this to set the `inital_guess`, then rerun with `local` set to true and a smaller range for example `[0.1, 0.1, 0.1, 0.5, 0.5, 0.5, 0.01]`.
+For most systems the node can be run without tuning the parameters. By default two optimizations are performed, a rough global optimzation followed by a local refinement.
 
 ## CSV format
 
@@ -58,12 +55,16 @@ This package depends on ROS, PCL and ncurses. Ncurses can be installed with `sud
 ### Alinger Parameters
 | Parameter | Description | Default |
 | --------------------  |:-----------:| :-------:|
-| `local` |  True for local optimization, false for a much slower global optimization | true |
-| `inital_guess` |  Inital guess to the calibration (x, y, z, rotation vector, time offset) | [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] |
-| `range` |  Range around the inital guess the optimizer will search for a solution in | [1.0, 1.0, 1.0, 3.15, 3.15, 3.15, 0.0] |
-| `max_evals` | Maximum number of function evaluations to run | 1000 |
+| `local` |  If False a global optimzation will be performed and the result of this will be used in place of the `inital_guess` parameter. | false |
+| `inital_guess` |  Inital guess to the calibration (x, y, z, rotation vector, time offset), only used if running in `local` mode. | [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] |
+| `max_baseline` |  Maximum distance between sensors to consider during the global optimization stage. | 1.0 |
+| `max_time_offset` |  Maximum time offset between sensor clocks in seconds. | 0.1 |
+| `angular_range` | Search range in radians around the `inital_guess` during the local optimization stage. | 0.5 |
+| `translational_range` | Search range around the `inital_guess` during the local optimization stage. | 0.25 |
+| `max_evals` | Maximum number of function evaluations to run | 2000 |
 | `xtol` | Tolerance of final solution | 0.000001 |
 | `knn_batch_size` | Number of points to send to each thread when finding nearest points | 1000 |
 | `knn_k` | Number of neighbours to consider in error function | 1 |
-| `knn_max_dist` | Error between points is limited to this value | 0.1 |
-| `time_cal` | True to perform time offset calibration | false |
+| `global_knn_max_dist` | Error between points is limited to this value during global optimization. | 1.0 |
+| `local_knn_max_dist` | Error between points is limited to this value during local optimization. | 0.1 |
+| `time_cal` | True to perform time offset calibration | true |

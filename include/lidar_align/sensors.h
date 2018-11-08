@@ -16,12 +16,11 @@
 namespace lidar_align {
 
 typedef std::string LidarId;
-typedef float Scalar;
 // this must be at least 64 bit and signed or things will break
 typedef long long int Timestamp;
 
-typedef kindr::minimal::QuatTransformationTemplate<Scalar> Transform;
-typedef kindr::minimal::AngleAxisTemplate<Scalar> AngleAxis;
+typedef kindr::minimal::QuatTransformationTemplate<float> Transform;
+typedef kindr::minimal::AngleAxisTemplate<float> AngleAxis;
 
 struct EIGEN_ALIGN16 PointAllFields {
   PCL_ADD_POINT4D;
@@ -57,6 +56,8 @@ class Odom {
                              const size_t start_idx = 0,
                              size_t* match_idx = nullptr) const;
 
+  bool empty() { return data_.empty(); }
+
  private:
   std::vector<OdomTformData> data_;
 };
@@ -64,15 +65,15 @@ class Odom {
 class Scan {
  public:
   struct Config {
-    Scalar min_point_distance = 0.0;
-    Scalar max_point_distance = 100.0;
-    Scalar keep_points_ratio = 0.01;
-    Scalar min_return_intensity = -1.0;
+    float min_point_distance = 0.0;
+    float max_point_distance = 100.0;
+    float keep_points_ratio = 0.005;
+    float min_return_intensity = -1.0;
 
     bool estimate_point_times = false;
     bool clockwise_lidar = false;
     bool motion_compensation = true;
-    Scalar lidar_rpm = 600.0;
+    float lidar_rpm = 600.0;
   };
 
   Scan(const LoaderPointcloud& pointcloud, const Config& config);
