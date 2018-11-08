@@ -70,6 +70,7 @@ bool Loader::loadPointcloudFromROSBag(const std::string& bag_path,
   try {
     bag.open(bag_path, rosbag::bagmode::Read);
   } catch (rosbag::BagException e) {
+    endwin();
     ROS_ERROR_STREAM("LOADING BAG FAILED: " << e.what());
     return false;
   }
@@ -103,7 +104,9 @@ bool Loader::loadTformFromROSBag(const std::string& bag_path, Odom* odom) {
   try {
     bag.open(bag_path, rosbag::bagmode::Read);
   } catch (rosbag::BagException e) {
+    endwin();
     ROS_ERROR_STREAM("LOADING BAG FAILED: " << e.what());
+    return false;
   }
 
   std::vector<std::string> types;
@@ -125,6 +128,12 @@ bool Loader::loadTformFromROSBag(const std::string& bag_path, Odom* odom) {
     Timestamp stamp = transform_msg.header.stamp.sec * 1000000ll +
                       transform_msg.header.stamp.nsec / 1000ll;
     odom->addTransformData(stamp, T.cast<float>());
+  }
+
+  if(odom->empty()){
+    endwin();
+    ROS_ERROR_STREAM("No odom messages found!");
+    return false;
   }
 
   return true;

@@ -56,6 +56,8 @@ class Odom {
                              const size_t start_idx = 0,
                              size_t* match_idx = nullptr) const;
 
+  bool empty() { return data_.empty(); }
+
  private:
   std::vector<OdomTformData> data_;
 };

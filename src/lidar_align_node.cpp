@@ -36,6 +36,7 @@ int main(int argc, char** argv) {
 
   std::string input_bag_path;
   if (!nh_private.getParam("input_bag_path", input_bag_path)) {
+    endwin();
     ROS_FATAL("Could not find input_bag_path parameter, exiting");
     exit(EXIT_FAILURE);
   } else if (!loader.loadPointcloudFromROSBag(
@@ -49,6 +50,7 @@ int main(int argc, char** argv) {
   std::string input_csv_path;
   if (transforms_from_csv) {
     if (!nh_private.getParam("input_csv_path", input_csv_path)) {
+      endwin();
       ROS_FATAL("Could not find input_csv_path parameter, exiting");
       exit(EXIT_FAILURE);
     } else if (!loader.loadTformFromMaplabCSV(input_csv_path, &odom)) {
@@ -61,6 +63,7 @@ int main(int argc, char** argv) {
   }
 
   if (lidar.getNumberOfScans() == 0) {
+    endwin();
     ROS_FATAL("No data loaded, exiting");
     exit(0);
   }
@@ -72,5 +75,6 @@ int main(int argc, char** argv) {
 
   aligner.lidarOdomTransform(&lidar, &odom);
 
+  endwin();
   return 0;
 }
