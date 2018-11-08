@@ -124,7 +124,7 @@ bool Loader::loadTformFromROSBag(const std::string& bag_path, Odom* odom) {
 
     Timestamp stamp = transform_msg.header.stamp.sec * 1000000ll +
                       transform_msg.header.stamp.nsec / 1000ll;
-    odom->addTransformData(stamp, T.cast<Scalar>());
+    odom->addTransformData(stamp, T.cast<float>());
   }
 
   return true;
@@ -145,7 +145,7 @@ bool Loader::loadTformFromMaplabCSV(const std::string& csv_path, Odom* odom) {
 
     if (getNextCSVTransform(file, &stamp, &pos, &rot)) {
       odom->addTransformData(
-          stamp, kindr::minimal::QuatTransformation(rot, pos).cast<Scalar>());
+          stamp, kindr::minimal::QuatTransformation(rot, pos).cast<float>());
     }
   }
 
