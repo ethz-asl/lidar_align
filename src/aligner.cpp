@@ -142,12 +142,12 @@ void Aligner::optimize(const std::vector<double>& lb,
   opt.set_maxeval(config_.max_evals);
   opt.set_xtol_abs(config_.xtol);
 
-  opt.set_min_objective(LidarOdomMinimizer, &opt_data);
+  opt.set_min_objective(LidarOdomMinimizer, opt_data);
 
   double minf;
   std::vector<double> grad;
   nlopt::result result = opt.optimize(*x, minf);
-  LidarOdomMinimizer(*x, grad, &opt_data);
+  LidarOdomMinimizer(*x, grad, opt_data);
 }
 
 void Aligner::outputToFile(const Transform& T, const double time_offset) {
@@ -156,8 +156,7 @@ void Aligner::outputToFile(const Transform& T, const double time_offset) {
   std::ofstream file;
   file.open(config_.output_calibration_path, std::ofstream::out);
 
-  file << "Active Transformation Vector (x,y,z,rx,ry,rz) from the Pose Sensor "
-          "Frame to  the Lidar Frame:"
+  file << "Active Transformation Vector (x,y,z,rx,ry,rz) from the Pose Sensor Frame to  the Lidar Frame:"
        << std::endl
        << "[";
   file << T_log[0] << ", ";
@@ -167,21 +166,18 @@ void Aligner::outputToFile(const Transform& T, const double time_offset) {
   file << T_log[4] << ", ";
   file << T_log[5] << "]" << std::endl << std::endl;
 
-  file << "Active Transformation Matrix from the Pose Sensor Frame to  the "
-          "Lidar Frame:"
+  file << "Active Transformation Matrix from the Pose Sensor Frame to  the Lidar Frame:"
        << std::endl;
   file << T << std::endl << std::endl;
 
-  file << "Active Translation Vector (x,y,z) from the Pose Sensor Frame to  "
-          "the Lidar Frame:"
+  file << "Active Translation Vector (x,y,z) from the Pose Sensor Frame to  the Lidar Frame:"
        << std::endl
        << "[";
   file << T.getPosition().x() << ", ";
   file << T.getPosition().y() << ", ";
   file << T.getPosition().z() << "]" << std::endl << std::endl;
 
-  file << "Active Hamiltonen Quaternion (w,x,y,z) the Pose Sensor Frame to  "
-          "the Lidar Frame:"
+  file << "Active Hamiltonen Quaternion (w,x,y,z) the Pose Sensor Frame to  the Lidar Frame:"
        << std::endl
        << "[";
   file << T.getRotation().w() << ", ";

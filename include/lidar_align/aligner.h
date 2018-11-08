@@ -20,16 +20,16 @@ class Aligner {
     double max_baseline = 1.0;
     double max_time_offset = 0.1;
     double angular_range = 0.5;
-    double translation_range = 0.25;
+    double translation_range = 0.5;
 
-    double max_evals = 2000;
+    double max_evals = 1000;
     double xtol = 0.000001;
 
     int knn_batch_size = 1000;
     int knn_k = 1;
     float local_knn_max_dist = 0.1;
     float global_knn_max_dist = 1.0;
-    bool time_cal = false;
+    bool time_cal = true;
 
     std::string output_pointcloud_path = "";
     std::string output_calibration_path = "";
