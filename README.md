@@ -1,12 +1,16 @@
 # lidar_align
 
 ## A simple method for finding the extrinsic calibration between a 3D lidar and a 6-dof pose sensor
-The method makes use of the property that pointclouds from lidars appear more 'crisp' when the calibration is correct. The system attempts to find the transform between a lidar and the given poses such that the distance between any two lidar points in the resulting fused pointcloud is minimized. Poses can be provided as a TransformStamped message or in Maplab's CSV format
-
-This library is pretty new and only tested on a couple of datasets, so expect some issues when you first run it.
+The method makes use of the property that pointclouds from lidars appear more 'crisp' when the calibration is correct. It does this as follows:
+1) A transformation between the lidar and pose sensor is set.
+2) The poses are used in combination with the above transformation to fuse all the lidar points into a single pointcloud.
+3) The sum of the distance between each point and its nearest neighbour is found.
+This process is repeated in an optimization that attempts to find the transformation that minimizes this distance.
 
 ## Estimation proceedure
 For most systems the node can be run without tuning the parameters. By default two optimizations are performed, a rough global optimzation followed by a local refinement.
+
+The node will load all messages of type `sensor_msgs/PointCloud2` from the given ROS bag for use as the lidar scans to process. The poses can either be given in the same bag file as `geometry_msgs/TransformStamped` messages or in a seperate CSV file that follows the format of [Maplab](https://github.com/ethz-asl/maplab).
 
 ## CSV format
 
@@ -23,9 +27,6 @@ For most systems the node can be run without tuning the parameters. By default t
 9 | orientation quaternion z 
 
 Note that Maplab has two CSV exporters. This file-format is the same as produced by [exportPosesVelocitiesAndBiasesToCsv](https://github.com/ethz-asl/maplab/blob/master/console-plugins/vi-map-data-import-export-plugin/src/export-vertex-data.cc#L39) but differs from the output of [exportVerticesAndTracksToCsv](https://github.com/ethz-asl/maplab/blob/master/tools/csv-export/src/csv-export.cc#L35)
-
-## Deps
-This package depends on ROS and PCL.
 
 ## Parameters
 ------
