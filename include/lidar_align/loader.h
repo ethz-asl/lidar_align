@@ -5,7 +5,6 @@
 #include <ros/ros.h>
 
 #include "lidar_align/sensors.h"
-#include "lidar_align/table.h"
 
 #define PCL_NO_PRECOMPILE
 
@@ -17,7 +16,7 @@ class Loader {
     int use_n_scans = std::numeric_limits<int>::max();
   };
 
-  Loader(const std::shared_ptr<Table>& table_ptr, const Config& config);
+  Loader(const Config& config);
 
   void parsePointcloudMsg(const sensor_msgs::PointCloud2 msg,
                           LoaderPointcloud* pointcloud);
@@ -37,7 +36,6 @@ class Loader {
                                   kindr::minimal::RotationQuaternion* rot);
 
   Config config_;
-  std::shared_ptr<Table> table_ptr_;
 };
 }  // namespace lidar_align
 

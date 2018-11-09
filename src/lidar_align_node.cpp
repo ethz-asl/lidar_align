@@ -5,38 +5,22 @@
 #include "lidar_align/aligner.h"
 #include "lidar_align/loader.h"
 #include "lidar_align/sensors.h"
-#include "lidar_align/table.h"
 
 using namespace lidar_align;
-
-std::shared_ptr<Table> setupTable() {
-  std::vector<std::string> column_names;
-  column_names.push_back("x");
-  column_names.push_back("y");
-  column_names.push_back("z");
-  column_names.push_back("rx");
-  column_names.push_back("ry");
-  column_names.push_back("rz");
-  column_names.push_back("time");
-
-  return std::make_shared<Table>(column_names, 10, 10);
-}
 
 int main(int argc, char** argv) {
   ros::init(argc, argv, "lidar_align");
 
   ros::NodeHandle nh, nh_private("~");
 
-  std::shared_ptr<Table> table_ptr = setupTable();
-
-  Loader loader(table_ptr, Loader::getConfig(&nh_private));
+  Loader loader(Loader::getConfig(&nh_private));
 
   Lidar lidar;
   Odom odom;
 
   std::string input_bag_path;
+  ROS_INFO("Loading Pointcloud Data...");
   if (!nh_private.getParam("input_bag_path", input_bag_path)) {
-    endwin();
     ROS_FATAL("Could not find input_bag_path parameter, exiting");
     exit(EXIT_FAILURE);
   } else if (!loader.loadPointcloudFromROSBag(
@@ -48,9 +32,9 @@ int main(int argc, char** argv) {
   bool transforms_from_csv;
   nh_private.param("transforms_from_csv", transforms_from_csv, false);
   std::string input_csv_path;
+  ROS_INFO("Loading Transformation Data...                                ");
   if (transforms_from_csv) {
     if (!nh_private.getParam("input_csv_path", input_csv_path)) {
-      endwin();
       ROS_FATAL("Could not find input_csv_path parameter, exiting");
       exit(EXIT_FAILURE);
     } else if (!loader.loadTformFromMaplabCSV(input_csv_path, &odom)) {
@@ -63,18 +47,16 @@ int main(int argc, char** argv) {
   }
 
   if (lidar.getNumberOfScans() == 0) {
-    endwin();
     ROS_FATAL("No data loaded, exiting");
     exit(0);
   }
 
-  table_ptr->updateHeader("Interpolating odometry data");
+  ROS_INFO("Interpolating Transformation Data...                          ");
   lidar.setOdomOdomTransforms(odom);
 
-  Aligner aligner(table_ptr, Aligner::getConfig(&nh_private));
+  Aligner aligner(Aligner::getConfig(&nh_private));
 
   aligner.lidarOdomTransform(&lidar, &odom);
 
-  endwin();
   return 0;
 }

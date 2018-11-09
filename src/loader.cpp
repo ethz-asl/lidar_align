@@ -9,8 +9,7 @@
 
 namespace lidar_align {
 
-Loader::Loader(const std::shared_ptr<Table>& table_ptr, const Config& config)
-    : table_ptr_(table_ptr), config_(config) {}
+Loader::Loader(const Config& config) : config_(config) {}
 
 Loader::Config Loader::getConfig(ros::NodeHandle* nh) {
   Loader::Config config;
@@ -70,7 +69,6 @@ bool Loader::loadPointcloudFromROSBag(const std::string& bag_path,
   try {
     bag.open(bag_path, rosbag::bagmode::Read);
   } catch (rosbag::BagException e) {
-    endwin();
     ROS_ERROR_STREAM("LOADING BAG FAILED: " << e.what());
     return false;
   }
@@ -81,9 +79,8 @@ bool Loader::loadPointcloudFromROSBag(const std::string& bag_path,
 
   size_t scan_num = 0;
   for (const rosbag::MessageInstance& m : view) {
-    std::stringstream ss;
-    ss << "Loading scan: " << scan_num++ << " from ros bag";
-    table_ptr_->updateHeader(ss.str());
+    std::cout << " Loading scan: \e[1m" << scan_num++ << "\e[0m from ros bag"
+              << '\r' << std::flush;
 
     LoaderPointcloud pointcloud;
     parsePointcloudMsg(*(m.instantiate<sensor_msgs::PointCloud2>()),
@@ -104,7 +101,6 @@ bool Loader::loadTformFromROSBag(const std::string& bag_path, Odom* odom) {
   try {
     bag.open(bag_path, rosbag::bagmode::Read);
   } catch (rosbag::BagException e) {
-    endwin();
     ROS_ERROR_STREAM("LOADING BAG FAILED: " << e.what());
     return false;
   }
@@ -115,9 +111,8 @@ bool Loader::loadTformFromROSBag(const std::string& bag_path, Odom* odom) {
 
   size_t tform_num = 0;
   for (const rosbag::MessageInstance& m : view) {
-    std::stringstream ss;
-    ss << "Loading tform: " << tform_num++ << " from ros bag";
-    table_ptr_->updateHeader(ss.str());
+    std::cout << " Loading transform: \e[1m" << tform_num++
+              << "\e[0m from ros bag" << '\r' << std::flush;
 
     geometry_msgs::TransformStamped transform_msg =
         *(m.instantiate<geometry_msgs::TransformStamped>());
@@ -130,8 +125,7 @@ bool Loader::loadTformFromROSBag(const std::string& bag_path, Odom* odom) {
     odom->addTransformData(stamp, T.cast<float>());
   }
 
-  if(odom->empty()){
-    endwin();
+  if (odom->empty()) {
     ROS_ERROR_STREAM("No odom messages found!");
     return false;
   }
@@ -144,9 +138,8 @@ bool Loader::loadTformFromMaplabCSV(const std::string& csv_path, Odom* odom) {
 
   size_t tform_num = 0;
   while (file.peek() != EOF) {
-    std::stringstream ss;
-    ss << "Loading tform: " << tform_num++ << " from maplab csv";
-    table_ptr_->updateHeader(ss.str());
+    std::cout << " Loading transform: \e[1m" << tform_num++
+              << "\e[0m from csv file" << '\r' << std::flush;
 
     Timestamp stamp;
     kindr::minimal::Position pos;

@@ -2,8 +2,7 @@
 
 namespace lidar_align {
 
-Aligner::Aligner(const std::shared_ptr<Table>& table_ptr, const Config& config)
-    : table_ptr_(table_ptr), config_(config){};
+Aligner::Aligner(const Config& config) : config_(config){};
 
 Aligner::Config Aligner::getConfig(ros::NodeHandle* nh) {
   Aligner::Config config;
@@ -114,14 +113,19 @@ double Aligner::LidarOdomMinimizer(const std::vector<double>& x,
   const Eigen::Matrix<double, 6, 1> vec(x.data());
   d->lidar->setOdomLidarTransform(Transform::exp(vec.cast<float>()));
 
-  d->table->updateRow(d->lidar->getId(), x);
-
   double error = d->aligner->lidarOdomKNNError(*(d->lidar));
 
   static int i = 0;
-  std::stringstream ss;
-  ss << "Total error: " << error << " \tat iteration: " << i++;
-  d->table->updateFooter(ss.str());
+
+  std::cout << std::fixed << std::setprecision(2);
+  std::cout << " \e[1mx:\e[0m " << std::setw(6) << x[0];
+  std::cout << " \e[1my:\e[0m " << std::setw(6) << x[1];
+  std::cout << " \e[1mz:\e[0m " << std::setw(6) << x[2];
+  std::cout << " \e[1mrx:\e[0m " << std::setw(6) << x[3];
+  std::cout << " \e[1mry:\e[0m " << std::setw(6) << x[4];
+  std::cout << " \e[1mrz:\e[0m " << std::setw(6) << x[5];
+  std::cout << " \e[1mError:\e[0m " << std::setw(10) << error;
+  std::cout << " \e[1mIteration:\e[0m " << i++ << '\r' << std::flush;
 
   return error;
 }
@@ -150,68 +154,69 @@ void Aligner::optimize(const std::vector<double>& lb,
   LidarOdomMinimizer(*x, grad, opt_data);
 }
 
-void Aligner::outputToFile(const Transform& T, const double time_offset) {
+std::string Aligner::generateCalibrationString(const Transform& T,
+                                               const double time_offset) {
   Transform::Vector6 T_log = T.log();
-  table_ptr_->updateHeader("Saving calibration file");
-  std::ofstream file;
-  file.open(config_.output_calibration_path, std::ofstream::out);
+  std::stringstream ss;
 
-  file << "Active Transformation Vector (x,y,z,rx,ry,rz) from the Pose Sensor Frame to  the Lidar Frame:"
-       << std::endl
-       << "[";
-  file << T_log[0] << ", ";
-  file << T_log[1] << ", ";
-  file << T_log[2] << ", ";
-  file << T_log[3] << ", ";
-  file << T_log[4] << ", ";
-  file << T_log[5] << "]" << std::endl << std::endl;
+  ss << "Active Transformation Vector (x,y,z,rx,ry,rz) from the Pose Sensor "
+        "Frame to  the Lidar Frame:"
+     << std::endl
+     << "[";
+  ss << T_log[0] << ", ";
+  ss << T_log[1] << ", ";
+  ss << T_log[2] << ", ";
+  ss << T_log[3] << ", ";
+  ss << T_log[4] << ", ";
+  ss << T_log[5] << "]" << std::endl << std::endl;
 
-  file << "Active Transformation Matrix from the Pose Sensor Frame to  the Lidar Frame:"
-       << std::endl;
-  file << T << std::endl << std::endl;
+  ss << "Active Transformation Matrix from the Pose Sensor Frame to  the "
+        "Lidar Frame:"
+     << std::endl;
+  ss << T << std::endl << std::endl;
 
-  file << "Active Translation Vector (x,y,z) from the Pose Sensor Frame to  the Lidar Frame:"
-       << std::endl
-       << "[";
-  file << T.getPosition().x() << ", ";
-  file << T.getPosition().y() << ", ";
-  file << T.getPosition().z() << "]" << std::endl << std::endl;
+  ss << "Active Translation Vector (x,y,z) from the Pose Sensor Frame to  "
+        "the Lidar Frame:"
+     << std::endl
+     << "[";
+  ss << T.getPosition().x() << ", ";
+  ss << T.getPosition().y() << ", ";
+  ss << T.getPosition().z() << "]" << std::endl << std::endl;
 
-  file << "Active Hamiltonen Quaternion (w,x,y,z) the Pose Sensor Frame to  the Lidar Frame:"
-       << std::endl
-       << "[";
-  file << T.getRotation().w() << ", ";
-  file << T.getRotation().x() << ", ";
-  file << T.getRotation().y() << ", ";
-  file << T.getRotation().z() << "]" << std::endl << std::endl;
+  ss << "Active Hamiltonen Quaternion (w,x,y,z) the Pose Sensor Frame to  "
+        "the Lidar Frame:"
+     << std::endl
+     << "[";
+  ss << T.getRotation().w() << ", ";
+  ss << T.getRotation().x() << ", ";
+  ss << T.getRotation().y() << ", ";
+  ss << T.getRotation().z() << "]" << std::endl << std::endl;
 
   if (config_.time_cal) {
-    file << "Time offset that must be added to lidar timestamps in seconds:"
-         << std::endl
-         << time_offset << std::endl
-         << std::endl;
+    ss << "Time offset that must be added to lidar timestamps in seconds:"
+       << std::endl
+       << time_offset << std::endl
+       << std::endl;
   }
 
-  file << "ROS Static TF Publisher: <node pkg=\"tf\" "
-          "type=\"static_transform_publisher\" "
-          "name=\"pose_lidar_broadcaster\" args=\"";
-  file << T.getPosition().x() << " ";
-  file << T.getPosition().y() << " ";
-  file << T.getPosition().z() << " ";
-  file << T.getRotation().x() << " ";
-  file << T.getRotation().y() << " ";
-  file << T.getRotation().z() << " ";
-  file << T.getRotation().w() << " POSE_FRAME LIDAR_FRAME 100\" />"
-       << std::endl;
+  ss << "ROS Static TF Publisher: <node pkg=\"tf\" "
+        "type=\"static_transform_publisher\" "
+        "name=\"pose_lidar_broadcaster\" args=\"";
+  ss << T.getPosition().x() << " ";
+  ss << T.getPosition().y() << " ";
+  ss << T.getPosition().z() << " ";
+  ss << T.getRotation().x() << " ";
+  ss << T.getRotation().y() << " ";
+  ss << T.getRotation().z() << " ";
+  ss << T.getRotation().w() << " POSE_FRAME LIDAR_FRAME 100\" />" << std::endl;
 
-  file.close();
+  return ss.str();
 }
 
 void Aligner::lidarOdomTransform(Lidar* lidar, Odom* odom) {
   OptData opt_data;
   opt_data.lidar = lidar;
   opt_data.odom = odom;
-  opt_data.table = table_ptr_;
   opt_data.aligner = this;
   opt_data.time_cal = config_.time_cal;
 
@@ -223,7 +228,7 @@ void Aligner::lidarOdomTransform(Lidar* lidar, Odom* odom) {
   std::vector<double> x(num_params, 0.0);
 
   if (!config_.local) {
-    table_ptr_->updateHeader("Performing Global Optimization.");
+    ROS_INFO("Performing Global Optimization...                             ");
 
     std::vector<double> lb = {-config_.max_baseline,
                               -config_.max_baseline,
@@ -249,7 +254,7 @@ void Aligner::lidarOdomTransform(Lidar* lidar, Odom* odom) {
     x = config_.inital_guess;
   }
 
-  table_ptr_->updateHeader("Performing Local Optimization.");
+  ROS_INFO("Performing Local Optimization...                                ");
 
   std::vector<double> lb = {
       -config_.translation_range, -config_.translation_range,
@@ -271,14 +276,23 @@ void Aligner::lidarOdomTransform(Lidar* lidar, Odom* odom) {
   optimize(lb, ub, &opt_data, &x);
 
   if (!config_.output_pointcloud_path.empty()) {
-    table_ptr_->updateHeader("Saving calibration pointcloud");
+    ROS_INFO(
+        "Saving Aligned Pointcloud...                                     ");
     lidar->saveCombinedPointcloud(config_.output_pointcloud_path);
   }
 
+  const std::string output_calibration =
+      generateCalibrationString(lidar->getOdomLidarTransform(), x.back());
   if (!config_.output_calibration_path.empty()) {
-    const Transform& T = lidar->getOdomLidarTransform();
-    outputToFile(T, x.back());
+    ROS_INFO("Saving Calibration File...                                ");
+
+    std::ofstream file;
+    file.open(config_.output_calibration_path, std::ofstream::out);
+    file << output_calibration;
+    file.close();
   }
+  ROS_INFO("\e[1mFinal Calibration:\e[0m                                ");
+  std::cout << output_calibration;
 }
 
 }  // namespace lidar_align

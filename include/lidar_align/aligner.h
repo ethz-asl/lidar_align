@@ -8,7 +8,6 @@
 #include <nlopt.hpp>
 
 #include "lidar_align/sensors.h"
-#include "lidar_align/table.h"
 
 namespace lidar_align {
 
@@ -22,7 +21,7 @@ class Aligner {
     double angular_range = 0.5;
     double translation_range = 0.5;
 
-    double max_evals = 1000;
+    double max_evals = 50;
     double xtol = 0.000001;
 
     int knn_batch_size = 1000;
@@ -39,11 +38,10 @@ class Aligner {
     Lidar* lidar;
     Odom* odom;
     Aligner* aligner;
-    std::shared_ptr<Table> table;
     bool time_cal;
   };
 
-  Aligner(const std::shared_ptr<Table>& table_ptr, const Config& config);
+  Aligner(const Config& config);
 
   static Config getConfig(ros::NodeHandle* nh);
 
@@ -53,7 +51,8 @@ class Aligner {
   void optimize(const std::vector<double>& lb, const std::vector<double>& ub,
                 OptData* opt_data, std::vector<double>* x);
 
-  void outputToFile(const Transform& T, const double time_offset);
+  std::string generateCalibrationString(const Transform& T,
+                                        const double time_offset);
 
   static float kNNError(
       const pcl::KdTreeFLANN<Point>& kdtree, const Pointcloud& pointcloud,
@@ -69,7 +68,6 @@ class Aligner {
                                    std::vector<double>& grad, void* f_data);
 
   Config config_;
-  std::shared_ptr<Table> table_ptr_;
 };
 
 }  // namespace lidar_align

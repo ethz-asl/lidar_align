@@ -25,7 +25,7 @@ For most systems the node can be run without tuning the parameters. By default t
 Note that Maplab has two CSV exporters. This file-format is the same as produced by [exportPosesVelocitiesAndBiasesToCsv](https://github.com/ethz-asl/maplab/blob/master/console-plugins/vi-map-data-import-export-plugin/src/export-vertex-data.cc#L39) but differs from the output of [exportVerticesAndTracksToCsv](https://github.com/ethz-asl/maplab/blob/master/tools/csv-export/src/csv-export.cc#L35)
 
 ## Deps
-This package depends on ROS, PCL and ncurses. Ncurses can be installed with `sudo apt install libncurses5-dev`
+This package depends on ROS and PCL.
 
 ## Parameters
 ------

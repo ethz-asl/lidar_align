@@ -3,8 +3,6 @@ project(lidar_align)
 
 add_definitions(-std=c++11 -ofast)
 
-
-find_package(Curses REQUIRED)
 find_package(catkin_simple REQUIRED)
 catkin_simple(ALL_DEPS_REQUIRED)
 
@@ -19,7 +17,7 @@ add_executable(lidar_align
   src/aligner.cpp  
   src/loader.cpp
 )
-target_link_libraries(lidar_align ${catkin_LIBRARIES} ${CURSES_LIBRARIES})
+target_link_libraries(lidar_align ${catkin_LIBRARIES})
 
 ##########
 # EXPORT #
