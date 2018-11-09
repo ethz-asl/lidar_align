@@ -21,7 +21,7 @@ class Aligner {
     double angular_range = 0.5;
     double translation_range = 0.5;
 
-    double max_evals = 50;
+    double max_evals = 500;
     double xtol = 0.000001;
 
     int knn_batch_size = 1000;
