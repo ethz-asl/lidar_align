@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
 
-  <arg name="bag_file" default="/home/z/Downloads/extrinsics.bag"/>
-  <arg name="transforms_from_csv" default="true"/>
-  <arg name="csv_file" default="/home/z/Downloads/calib0_opt_poses.csv"/>
+  <arg name="bag_file" default="/PATH/TO/YOUR.bag"/>
+  <arg name="transforms_from_csv" default="false"/>
+  <arg name="csv_file" default="PATH/TO/YOUR.csv"/>
 
   <node pkg="lidar_align" name="lidar_align" type="lidar_align" output="screen">
     <param name="input_bag_path" value="$(arg bag_file)" />
