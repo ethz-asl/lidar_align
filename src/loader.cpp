@@ -2,10 +2,8 @@
 #include <rosbag/bag.h>
 #include <rosbag/view.h>
 
-#include <minkindr_conversions/kindr_msg.h>
-#include <minkindr_conversions/kindr_tf.h>
-
 #include "lidar_align/loader.h"
+#include "lidar_align/transform.h"
 
 namespace lidar_align {
 
@@ -117,12 +115,17 @@ bool Loader::loadTformFromROSBag(const std::string& bag_path, Odom* odom) {
     geometry_msgs::TransformStamped transform_msg =
         *(m.instantiate<geometry_msgs::TransformStamped>());
 
-    kindr::minimal::QuatTransformation T;
-    tf::transformMsgToKindr(transform_msg.transform, &T);
-
     Timestamp stamp = transform_msg.header.stamp.sec * 1000000ll +
                       transform_msg.header.stamp.nsec / 1000ll;
-    odom->addTransformData(stamp, T.cast<float>());
+
+    Transform T(Transform::Translation(transform_msg.transform.translation.x,
+                                       transform_msg.transform.translation.y,
+                                       transform_msg.transform.translation.z),
+                Transform::Rotation(transform_msg.transform.rotation.w,
+                                    transform_msg.transform.rotation.x,
+                                    transform_msg.transform.rotation.y,
+                                    transform_msg.transform.rotation.z));
+    odom->addTransformData(stamp, T);
   }
 
   if (odom->empty()) {
@@ -142,12 +145,10 @@ bool Loader::loadTformFromMaplabCSV(const std::string& csv_path, Odom* odom) {
               << "\e[0m from csv file" << '\r' << std::flush;
 
     Timestamp stamp;
-    kindr::minimal::Position pos;
-    kindr::minimal::RotationQuaternion rot;
+    Transform T;
 
-    if (getNextCSVTransform(file, &stamp, &pos, &rot)) {
-      odom->addTransformData(
-          stamp, kindr::minimal::QuatTransformation(rot, pos).cast<float>());
+    if (getNextCSVTransform(file, &stamp, &T)) {
+      odom->addTransformData(stamp, T);
     }
   }
 
@@ -156,8 +157,7 @@ bool Loader::loadTformFromMaplabCSV(const std::string& csv_path, Odom* odom) {
 
 // lots of potential failure cases not checked
 bool Loader::getNextCSVTransform(std::istream& str, Timestamp* stamp,
-                                 kindr::minimal::Position* pos,
-                                 kindr::minimal::RotationQuaternion* rot) {
+                                 Transform* T) {
   std::string line;
   std::getline(str, line);
 
@@ -188,11 +188,10 @@ bool Loader::getNextCSVTransform(std::istream& str, Timestamp* stamp,
   constexpr size_t RZ = 8;
 
   *stamp = std::stoll(data[TIME]) / 1000ll;
-  *rot = kindr::minimal::RotationQuaternion(
-      std::stod(data[RW]), std::stod(data[RX]), std::stod(data[RY]),
-      std::stod(data[RZ]));
-  *pos = kindr::minimal::Position(std::stod(data[X]), std::stod(data[Y]),
-                                  std::stod(data[Z]));
+  *T = Transform(Transform::Translation(std::stod(data[X]), std::stod(data[Y]),
+                                        std::stod(data[Z])),
+                 Transform::Rotation(std::stod(data[RW]), std::stod(data[RX]),
+                                     std::stod(data[RY]), std::stod(data[RZ])));
 
   return true;
 }

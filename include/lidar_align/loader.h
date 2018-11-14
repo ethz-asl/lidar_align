@@ -32,8 +32,7 @@ class Loader {
 
  private:
   static bool getNextCSVTransform(std::istream& str, Timestamp* stamp,
-                                  kindr::minimal::Position* pos,
-                                  kindr::minimal::RotationQuaternion* rot);
+                                  Transform* T);
 
   Config config_;
 };

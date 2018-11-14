@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+
+  <arg name="bag_file" default="/PATH/TO/YOUR.bag"/>
+  <arg name="transforms_from_csv" default="false"/>
+  <arg name="csv_file" default="PATH/TO/YOUR.csv"/>
+
+  <node pkg="lidar_align" name="lidar_align" type="lidar_align" output="screen">
+    <param name="input_bag_path" value="$(arg bag_file)" />
+    <param name="input_csv_path" value="$(arg csv_file)" />
+    <param name="output_pointcloud_path" value="$(find lidar_align)/results/$(anon lidar_points).ply" />
+    <param name="output_calibration_path" value="$(find lidar_align)/results/$(anon calibration).txt" />
+    <param name="transforms_from_csv" value="$(arg transforms_from_csv)"/>
+  </node>
+
+</launch>
