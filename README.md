@@ -39,7 +39,7 @@ If **not using SSH** keys the same process can be performed using https instead:
 ```
 cd ~/catkin_ws/src/
 git clone https://github.com/ethz-asl/lidar_align.git
-wstool init . ./lidar_align/lidar_https.rosinstall
+wstool init . ./lidar_align/lidar_align_https.rosinstall
 wstool update
 ```
 
