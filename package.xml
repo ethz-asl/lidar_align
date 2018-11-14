@@ -11,8 +11,6 @@
   <buildtool_depend>catkin</buildtool_depend>
   <buildtool_depend>catkin_simple</buildtool_depend>
 
-  <depend>minkindr</depend>
-  <depend>minkindr_conversions</depend>
   <depend>image_transport</depend>
   <depend>cv_bridge</depend>
   <depend>pcl_ros</depend>

@@ -1,7 +1,6 @@
 #ifndef LIDAR_ALIGN_ALIGNER_H_
 #define LIDAR_ALIGN_ALIGNER_H_
 
-#include <ncurses.h>
 #include <ros/ros.h>
 #include <future>
 #include <limits>

@@ -173,24 +173,24 @@ std::string Aligner::generateCalibrationString(const Transform& T,
   ss << "Active Transformation Matrix from the Pose Sensor Frame to  the "
         "Lidar Frame:"
      << std::endl;
-  ss << T << std::endl << std::endl;
+  ss << T.matrix() << std::endl << std::endl;
 
   ss << "Active Translation Vector (x,y,z) from the Pose Sensor Frame to  "
         "the Lidar Frame:"
      << std::endl
      << "[";
-  ss << T.getPosition().x() << ", ";
-  ss << T.getPosition().y() << ", ";
-  ss << T.getPosition().z() << "]" << std::endl << std::endl;
+  ss << T.translation().x() << ", ";
+  ss << T.translation().y() << ", ";
+  ss << T.translation().z() << "]" << std::endl << std::endl;
 
   ss << "Active Hamiltonen Quaternion (w,x,y,z) the Pose Sensor Frame to  "
         "the Lidar Frame:"
      << std::endl
      << "[";
-  ss << T.getRotation().w() << ", ";
-  ss << T.getRotation().x() << ", ";
-  ss << T.getRotation().y() << ", ";
-  ss << T.getRotation().z() << "]" << std::endl << std::endl;
+  ss << T.rotation().w() << ", ";
+  ss << T.rotation().x() << ", ";
+  ss << T.rotation().y() << ", ";
+  ss << T.rotation().z() << "]" << std::endl << std::endl;
 
   if (config_.time_cal) {
     ss << "Time offset that must be added to lidar timestamps in seconds:"
@@ -202,13 +202,13 @@ std::string Aligner::generateCalibrationString(const Transform& T,
   ss << "ROS Static TF Publisher: <node pkg=\"tf\" "
         "type=\"static_transform_publisher\" "
         "name=\"pose_lidar_broadcaster\" args=\"";
-  ss << T.getPosition().x() << " ";
-  ss << T.getPosition().y() << " ";
-  ss << T.getPosition().z() << " ";
-  ss << T.getRotation().x() << " ";
-  ss << T.getRotation().y() << " ";
-  ss << T.getRotation().z() << " ";
-  ss << T.getRotation().w() << " POSE_FRAME LIDAR_FRAME 100\" />" << std::endl;
+  ss << T.translation().x() << " ";
+  ss << T.translation().y() << " ";
+  ss << T.translation().z() << " ";
+  ss << T.rotation().x() << " ";
+  ss << T.rotation().y() << " ";
+  ss << T.rotation().z() << " ";
+  ss << T.rotation().w() << " POSE_FRAME LIDAR_FRAME 100\" />" << std::endl;
 
   return ss.str();
 }

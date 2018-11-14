@@ -4,23 +4,18 @@
 #include <random>
 
 #include <pcl/common/transforms.h>
-#include <pcl/filters/statistical_outlier_removal.h>
-#include <pcl/filters/voxel_grid.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <ros/ros.h>
 
-#include <kindr/minimal/quat-transformation.h>
+#include "lidar_align/transform.h"
 
 namespace lidar_align {
 
 typedef std::string LidarId;
 // this must be at least 64 bit and signed or things will break
 typedef long long int Timestamp;
-
-typedef kindr::minimal::QuatTransformationTemplate<float> Transform;
-typedef kindr::minimal::AngleAxisTemplate<float> AngleAxis;
 
 struct EIGEN_ALIGN16 PointAllFields {
   PCL_ADD_POINT4D;

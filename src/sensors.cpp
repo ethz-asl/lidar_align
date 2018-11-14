@@ -141,7 +141,7 @@ void Scan::getTimeAlignedPointcloud(const Transform& T_o_l,
 
     Eigen::Affine3f pcl_transform;
 
-    pcl_transform.matrix() = T_o_lt.cast<float>().getTransformationMatrix();
+    pcl_transform.matrix() = T_o_lt.matrix();
     pointcloud->push_back(pcl::transformPoint(raw_points_[i], pcl_transform));
   }
 }

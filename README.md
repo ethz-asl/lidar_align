@@ -11,46 +11,10 @@ This process is repeated in an optimization that attempts to find the transforma
 
 To install lidar_align, please install [ROS Indigo](http://wiki.ros.org/indigo/Installation/Ubuntu), [ROS Kinetic](http://wiki.ros.org/kinetic/Installation/Ubuntu) or [ROS Melodic](http://wiki.ros.org/melodic/Installation/Ubuntu).
 
-First install additional system dependencies (swap kinetic for indigo or melodic as necessary):
+The following additional system dependencies are also required:
 ```
-sudo apt-get install python-wstool python-catkin-tools libnlopt-dev
+sudo apt-get install libnlopt-dev
 ```
-
-Next, add a few other dependencies.
-If you don't have a catkin workspace yet, set it up as follows:
-```
-mkdir -p ~/catkin_ws/src
-cd ~/catkin_ws
-catkin init
-catkin config --extend /opt/ros/kinetic #swap kinetic for your ros version
-catkin config --cmake-args -DCMAKE_BUILD_TYPE=Release
-catkin config --merge-devel
-```
-
-If using [**SSH keys for github**](https://help.github.com/articles/connecting-to-github-with-ssh/) (recommended):
-```
-cd ~/catkin_ws/src/
-git clone git@github.com:ethz-asl/lidar_align.git
-wstool init . ./lidar_align/lidar_align_ssh.rosinstall
-wstool update
-```
-
-If **not using SSH** keys the same process can be performed using https instead:
-```
-cd ~/catkin_ws/src/
-git clone https://github.com/ethz-asl/lidar_align.git
-wstool init . ./lidar_align/lidar_align_https.rosinstall
-wstool update
-```
-
-If you have already initalized wstool replace the above `wstool init` with `wstool merge -t`
-
-Compile:
-```
-cd ~/catkin_ws/src/
-catkin build voxblox_ros
-```
-
 
 ## Estimation proceedure
 For most systems the node can be run without tuning the parameters. By default two optimizations are performed, a rough global optimzation followed by a local refinement.
