@@ -20,6 +20,5 @@
   <depend>roscpp</depend>
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
-  <depend>nlopt</depend>
 
 </package>

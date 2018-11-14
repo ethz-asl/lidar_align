@@ -6,7 +6,11 @@ add_definitions(-std=c++11 -ofast)
 find_package(catkin_simple REQUIRED)
 catkin_simple(ALL_DEPS_REQUIRED)
 
-include_directories(${CURSES_INCLUDE_DIRS})
+find_package(nlopt REQUIRED)
+
+include_directories(
+  ${nlopt_INCLUDE_DIRS}
+)
 
 ############
 # BINARIES #
@@ -17,7 +21,7 @@ add_executable(lidar_align
   src/aligner.cpp  
   src/loader.cpp
 )
-target_link_libraries(lidar_align ${catkin_LIBRARIES})
+target_link_libraries(lidar_align ${catkin_LIBRARIES} ${nlopt_LIBRARIES})
 
 ##########
 # EXPORT #
