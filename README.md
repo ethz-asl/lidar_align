@@ -24,7 +24,35 @@ The node will load all messages of type `sensor_msgs/PointCloud2` from the given
 ## Visualization and Results
 
 The node will output it's current estimated transform while running. To view this your launchfile must set `output="screen"` in the `<node/>` section. See the given launchfile for an example.
-Once the optimization finishes the transformation parameters will be printed to the console. If the path has been set the results will also be saved to a text file. As a method of evaluating the quality of the alignment, if the needed path is set all points used for alignment will be projected into a single pointcloud and saved as a ply.
+
+Once the optimization finishes the transformation parameters will be printed to the console. An example output is as follows:
+```
+Active Transformation Vector (x,y,z,rx,ry,rz) from the Pose Sensor Frame to  the Lidar Frame:
+[-0.0608575, -0.0758112, 0.27089, 0.00371254, 0.00872398, 1.60227]
+
+Active Transformation Matrix from the Pose Sensor Frame to  the Lidar Frame:
+-0.0314953  -0.999473  0.0078319 -0.0608575
+  0.999499 -0.0314702 0.00330021 -0.0758112
+ -0.003052 0.00793192   0.999964    0.27089
+         0          0          0          1
+
+Active Translation Vector (x,y,z) from the Pose Sensor Frame to  the Lidar Frame:
+[-0.0608575, -0.0758112, 0.27089]
+
+Active Hamiltonen Quaternion (w,x,y,z) the Pose Sensor Frame to  the Lidar Frame:
+[0.69588, 0.00166397, 0.00391012, 0.718145]
+
+Time offset that must be added to lidar timestamps in seconds:
+0.00594481
+
+ROS Static TF Publisher: <node pkg="tf" type="static_transform_publisher" name="pose_lidar_broadcaster" args="-0.0608575 -0.0758112 0.27089 0.00166397 0.00391012 0.718145 0.69588 POSE_FRAME LIDAR_FRAME 100" />
+```
+If the path has been set the results will also be saved to a text file. 
+
+As a method of evaluating the quality of the alignment, if the needed path is set all points used for alignment will be projected into a single pointcloud and saved as a ply. An example of such a pointcloud can be seen below.
+
+![example_pointcloud](https://user-images.githubusercontent.com/730680/48580604-f5174100-e91f-11e8-8d7f-eb97086a71bf.jpg)
+
 
 ## CSV format
 
