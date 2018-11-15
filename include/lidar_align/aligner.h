@@ -15,13 +15,12 @@ class Aligner {
   struct Config {
     bool local = false;
     std::vector<double> inital_guess{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    double max_baseline = 1.0;
     double max_time_offset = 0.1;
     double angular_range = 0.5;
-    double translation_range = 0.5;
+    double translation_range = 1.0;
 
-    double max_evals = 500;
-    double xtol = 0.000001;
+    double max_evals = 200;
+    double xtol = 0.0001;
 
     int knn_batch_size = 1000;
     int knn_k = 1;

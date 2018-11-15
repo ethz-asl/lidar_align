@@ -13,18 +13,36 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
 )
 
-find_package(nlopt REQUIRED)
+# NLOPT is frustratingly inconsistent in the name of its cmake file so we use our own
+list(APPEND CMAKE_FIND_ROOT_PATH ${CMAKE_SOURCE_DIR})
+find_package(NLOPT REQUIRED)
 
 include_directories(
   include
-  ${nlopt_INCLUDE_DIRS}
+  ${NLOPT_INCLUDE_DIRS}
   ${catkin_INCLUDE_DIRS}
 )
 
-add_executable(lidar_align_node
-  src/lidar_align_node.cpp
+add_library(${PROJECT_NAME}
   src/sensors.cpp
   src/aligner.cpp  
   src/loader.cpp
 )
-target_link_libraries(lidar_align_node ${catkin_LIBRARIES} ${nlopt_LIBRARIES})
+
+catkin_package(
+   INCLUDE_DIRS include/
+   LIBRARIES ${PROJECT_NAME}
+)
+
+add_executable(lidar_align_node
+  src/lidar_align_node.cpp
+  
+)
+target_link_libraries(lidar_align_node ${PROJECT_NAME} ${catkin_LIBRARIES} ${NLOPT_LIBRARIES})
+
+install(DIRECTORY include/lidar_align
+  DESTINATION include
+  FILES_MATCHING 
+    PATTERN "*.h"
+    PATTERN "*.hpp"
+)

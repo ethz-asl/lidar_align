@@ -8,7 +8,6 @@ Aligner::Config Aligner::getConfig(ros::NodeHandle* nh) {
   Aligner::Config config;
   nh->param("local", config.local, config.local);
   nh->param("inital_guess", config.inital_guess, config.inital_guess);
-  nh->param("max_baseline", config.max_baseline, config.max_baseline);
   nh->param("max_time_offset", config.max_time_offset, config.max_time_offset);
   nh->param("angular_range", config.angular_range, config.angular_range);
   nh->param("translation_range", config.translation_range,
@@ -106,11 +105,18 @@ double Aligner::LidarOdomMinimizer(const std::vector<double>& x,
                                    std::vector<double>& grad, void* f_data) {
   OptData* d = static_cast<OptData*>(f_data);
 
-  if (d->time_cal) {
+  if (x.size() > 6) {
     d->lidar->setOdomOdomTransforms(*(d->odom), x[6]);
   }
 
-  const Eigen::Matrix<double, 6, 1> vec(x.data());
+  Eigen::Matrix<double, 6, 1> vec;
+  vec.setZero();
+
+  const size_t offset = x.size() == 3 ? 3 : 0;
+  for (size_t i = offset; i < 6; ++i) {
+    vec[i] = x[i - offset];
+  }
+
   d->lidar->setOdomLidarTransform(Transform::exp(vec.cast<float>()));
 
   double error = d->aligner->lidarOdomKNNError(*(d->lidar));
@@ -118,12 +124,17 @@ double Aligner::LidarOdomMinimizer(const std::vector<double>& x,
   static int i = 0;
 
   std::cout << std::fixed << std::setprecision(2);
-  std::cout << " \e[1mx:\e[0m " << std::setw(6) << x[0];
-  std::cout << " \e[1my:\e[0m " << std::setw(6) << x[1];
-  std::cout << " \e[1mz:\e[0m " << std::setw(6) << x[2];
-  std::cout << " \e[1mrx:\e[0m " << std::setw(6) << x[3];
-  std::cout << " \e[1mry:\e[0m " << std::setw(6) << x[4];
-  std::cout << " \e[1mrz:\e[0m " << std::setw(6) << x[5];
+  if (x.size() > 3) {
+    std::cout << " \e[1mx:\e[0m " << std::setw(6) << vec[0];
+    std::cout << " \e[1my:\e[0m " << std::setw(6) << vec[1];
+    std::cout << " \e[1mz:\e[0m " << std::setw(6) << vec[2];
+  }
+  std::cout << " \e[1mrx:\e[0m " << std::setw(6) << vec[3];
+  std::cout << " \e[1mry:\e[0m " << std::setw(6) << vec[4];
+  std::cout << " \e[1mrz:\e[0m " << std::setw(6) << vec[5];
+  if (x.size() > 6) {
+    std::cout << " \e[1mtime:\e[0m " << std::setw(6) << x[6];
+  }
   std::cout << " \e[1mError:\e[0m " << std::setw(10) << error;
   std::cout << " \e[1mIteration:\e[0m " << i++ << '\r' << std::flush;
 
@@ -230,26 +241,17 @@ void Aligner::lidarOdomTransform(Lidar* lidar, Odom* odom) {
   if (!config_.local) {
     ROS_INFO("Performing Global Optimization...                             ");
 
-    std::vector<double> lb = {-config_.max_baseline,
-                              -config_.max_baseline,
-                              -config_.max_baseline,
-                              -M_PI,
-                              -M_PI,
-                              -M_PI};
-    std::vector<double> ub = {config_.max_baseline,
-                              config_.max_baseline,
-                              config_.max_baseline,
-                              M_PI,
-                              M_PI,
-                              M_PI};
+    std::vector<double> lb = {-M_PI, -M_PI, -M_PI};
+    std::vector<double> ub = {M_PI, M_PI, M_PI};
 
-    if (config_.time_cal) {
-      ub.push_back(config_.max_time_offset);
-      lb.push_back(-config_.max_time_offset);
-    }
-
-    optimize(lb, ub, &opt_data, &x);
+    std::vector<double> global_x(3, 0.0);
+    optimize(lb, ub, &opt_data, &global_x);
     config_.local = true;
+
+    x[3] = global_x[0];
+    x[4] = global_x[1];
+    x[5] = global_x[2];
+
   } else {
     x = config_.inital_guess;
   }

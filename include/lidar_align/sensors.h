@@ -62,7 +62,7 @@ class Scan {
   struct Config {
     float min_point_distance = 0.0;
     float max_point_distance = 100.0;
-    float keep_points_ratio = 0.005;
+    float keep_points_ratio = 0.01;
     float min_return_intensity = -1.0;
 
     bool estimate_point_times = false;
