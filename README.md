@@ -51,8 +51,7 @@ If the path has been set the results will also be saved to a text file.
 
 As a method of evaluating the quality of the alignment, if the needed path is set all points used for alignment will be projected into a single pointcloud and saved as a ply. An example of such a pointcloud can be seen below.
 
-![example_pointcloud](https://user-images.githubusercontent.com/730680/48580604-f5174100-e91f-11e8-8d7f-eb97086a71bf.jpg)
-
+![example_pointcloud](https://user-images.githubusercontent.com/730680/48580820-7969c400-e920-11e8-9a69-e8aab2e74d20.png)
 
 ## CSV format
 
