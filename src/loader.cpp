@@ -41,6 +41,11 @@ void Loader::parsePointcloudMsg(const sensor_msgs::PointCloud2 msg,
       point.z = raw_point.z;
       point.intensity = raw_point.intensity;
 
+      if (!std::isfinite(point.x) || !std::isfinite(point.y) ||
+          !std::isfinite(point.z) || !std::isfinite(point.intensity)) {
+        continue;
+      }
+
       pointcloud->push_back(point);
     }
     pointcloud->header = raw_pointcloud.header;
@@ -53,6 +58,11 @@ void Loader::parsePointcloudMsg(const sensor_msgs::PointCloud2 msg,
       point.x = raw_point.x;
       point.y = raw_point.y;
       point.z = raw_point.z;
+
+      if (!std::isfinite(point.x) || !std::isfinite(point.y) ||
+          !std::isfinite(point.z)) {
+        continue;
+      }
 
       pointcloud->push_back(point);
     }
@@ -89,6 +99,12 @@ bool Loader::loadPointcloudFromROSBag(const std::string& bag_path,
     if (lidar->getNumberOfScans() >= config_.use_n_scans) {
       break;
     }
+  }
+  if (lidar->getTotalPoints() == 0) {
+    ROS_ERROR_STREAM(
+        "No points were loaded, verify that the bag contains populated "
+        "messages of type sensor_msgs/PointCloud2");
+    return false;
   }
 
   return true;
