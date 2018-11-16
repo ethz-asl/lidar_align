@@ -152,6 +152,14 @@ Lidar::Lidar(const LidarId& lidar_id) : lidar_id_(lidar_id){};
 
 const size_t Lidar::getNumberOfScans() const { return scans_.size(); }
 
+const size_t Lidar::getTotalPoints() const {
+  size_t num_points = 0;
+  for (const Scan& scan : scans_) {
+    num_points += scan.getRawPointcloud().size();
+  }
+  return num_points;
+}
+
 const LidarId& Lidar::getId() const { return lidar_id_; }
 
 void Lidar::addPointcloud(const LoaderPointcloud& pointcloud,

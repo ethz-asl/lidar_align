@@ -100,6 +100,8 @@ class Lidar {
 
   const size_t getNumberOfScans() const;
 
+  const size_t getTotalPoints() const;
+
   // note points are appended so any points in *pointcloud are preserved
   void getCombinedPointcloud(Pointcloud* pointcloud) const;
 
