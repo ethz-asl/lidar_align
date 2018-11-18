@@ -15,6 +15,9 @@ The following additional system dependencies are also required:
 ```
 sudo apt-get install libnlopt-dev
 ```
+## Input Transformations
+The final calibrations quality is strongly correlated with the quality of the transformation source and the range of motion observed. 
+To ensure an accurate calibration the dataset should encompass a large range of rotations and translations. Motion that is approximately planner (for example a car driving down a street) does not provide any information about the system in the direction perpendicular to the plane, which will cause the optimizer to give incorrect estimates in this direction.
 
 ## Estimation proceedure
 For most systems the node can be run without tuning the parameters. By default two optimizations are performed, a rough angle only global optimization followed by a local 6-dof refinement.
