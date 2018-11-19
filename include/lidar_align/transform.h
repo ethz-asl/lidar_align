@@ -46,9 +46,15 @@ class Transform {
   }
 
   static Transform exp(const Vector6& vector) {
-    return Transform(vector.head<3>(), Rotation(Eigen::AngleAxisf(
-                                           vector.tail<3>().norm(),
-                                           vector.tail<3>().normalized())));
+    Rotation rotation;
+    constexpr float kEpsilon = 1e-8;
+    const float norm = vector.tail<3>().norm();
+    if (norm < kEpsilon) {
+      return Transform(vector.head<3>(), Rotation::Identity());
+    } else {
+      return Transform(vector.head<3>(), Rotation(Eigen::AngleAxisf(
+                                             norm, vector.tail<3>() / norm)));
+    }
   }
 
   Vector6 log() const {
