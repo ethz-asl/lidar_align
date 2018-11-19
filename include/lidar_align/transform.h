@@ -46,7 +46,6 @@ class Transform {
   }
 
   static Transform exp(const Vector6& vector) {
-    Rotation rotation;
     constexpr float kEpsilon = 1e-8;
     const float norm = vector.tail<3>().norm();
     if (norm < kEpsilon) {
