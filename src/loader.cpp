@@ -167,7 +167,6 @@ bool Loader::loadTformFromMaplabCSV(const std::string& csv_path, Odom* odom) {
       odom->addTransformData(stamp, T);
     }
   }
-
   return true;
 }
 
@@ -195,13 +194,13 @@ bool Loader::getNextCSVTransform(std::istream& str, Timestamp* stamp,
   }
 
   constexpr size_t TIME = 0;
-  constexpr size_t X = 2;
-  constexpr size_t Y = 3;
-  constexpr size_t Z = 4;
-  constexpr size_t RW = 5;
-  constexpr size_t RX = 6;
-  constexpr size_t RY = 7;
-  constexpr size_t RZ = 8;
+  constexpr size_t X = 3;
+  constexpr size_t Y = 4;
+  constexpr size_t Z = 5;
+  constexpr size_t RW = 6;
+  constexpr size_t RX = 7;
+  constexpr size_t RY = 8;
+  constexpr size_t RZ = 9;
 
   *stamp = std::stoll(data[TIME]) / 1000ll;
   *T = Transform(Transform::Translation(std::stod(data[X]), std::stod(data[Y]),

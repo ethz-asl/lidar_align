@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
   } else if (!loader.loadPointcloudFromROSBag(
                  input_bag_path, Scan::getConfig(&nh_private), &lidar)) {
     ROS_FATAL("Error loading pointclouds from ROS bag.");
-    exit(0);
+    exit(EXIT_FAILURE);
   }
 
   bool transforms_from_csv;
@@ -37,18 +37,19 @@ int main(int argc, char** argv) {
     if (!nh_private.getParam("input_csv_path", input_csv_path)) {
       ROS_FATAL("Could not find input_csv_path parameter, exiting");
       exit(EXIT_FAILURE);
-    } else if (!loader.loadTformFromMaplabCSV(input_csv_path, &odom)) {
+    } 
+    if (!loader.loadTformFromMaplabCSV(input_csv_path, &odom)) {
       ROS_FATAL("Error loading transforms from CSV.");
-      exit(0);
+      exit(EXIT_FAILURE);
     }
   } else if (!loader.loadTformFromROSBag(input_bag_path, &odom)) {
     ROS_FATAL("Error loading transforms from ROS bag.");
-    exit(0);
+    exit(EXIT_FAILURE);
   }
 
   if (lidar.getNumberOfScans() == 0) {
     ROS_FATAL("No data loaded, exiting");
-    exit(0);
+    exit(EXIT_FAILURE);
   }
 
   ROS_INFO("Interpolating Transformation Data...                          ");
