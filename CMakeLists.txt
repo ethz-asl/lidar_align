@@ -28,6 +28,7 @@ add_library(${PROJECT_NAME}
   src/aligner.cpp  
   src/loader.cpp
 )
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${NLOPT_LIBRARIES})
 
 catkin_package(
    INCLUDE_DIRS include/
@@ -38,7 +39,7 @@ add_executable(lidar_align_node
   src/lidar_align_node.cpp
   
 )
-target_link_libraries(lidar_align_node ${PROJECT_NAME} ${catkin_LIBRARIES} ${NLOPT_LIBRARIES})
+target_link_libraries(lidar_align_node ${PROJECT_NAME} ${catkin_LIBRARIES})
 
 install(DIRECTORY include/lidar_align
   DESTINATION include
