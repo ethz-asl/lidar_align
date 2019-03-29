@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+
+  <arg name="bag_file" default="$(env HOME)/trunk/datasets/lidar_calib/2017-01-14-04-50-38.bag"/>
+  <arg name="transforms_from_csv" default="true"/>
+  <arg name="csv_file" default="$(env HOME)/trunk/datasets/lidar_calib/vertex_poses_velocities_2017-01-14-04-50-38.csv"/>
+
+  
+
+  <node pkg="lidar_align_vis" name="lidar_align_vis_node" type="lidar_align_vis_node" output="screen">
+    <param name="input_bag_path" value="$(arg bag_file)" />
+    <param name="input_csv_path" value="$(arg csv_file)" />
+    <param name="transforms_from_csv" value="$(arg transforms_from_csv)"/>
+    <param name="initial_calibration_path" value="$(find lidar_align)/results/calibration_shallowinsight_11730_8755089023695767502.txt"/>
+  </node>
+
+</launch>
