@@ -7,19 +7,19 @@
 
 namespace lidar_align {
 
-Loader::Loader(const Config& config) : config_(config) {}
+Loader::Loader(const Config &config) : config_(config) {}
 
-Loader::Config Loader::getConfig(ros::NodeHandle* nh) {
+Loader::Config Loader::getConfig(ros::NodeHandle *nh) {
   Loader::Config config;
   nh->param("use_n_scans", config.use_n_scans, config.use_n_scans);
   return config;
 }
 
 void Loader::parsePointcloudMsg(const sensor_msgs::PointCloud2 msg,
-                                LoaderPointcloud* pointcloud) {
+                                LoaderPointcloud *pointcloud) {
   bool has_timing = false;
   bool has_intensity = false;
-  for (const sensor_msgs::PointField& field : msg.fields) {
+  for (const sensor_msgs::PointField &field : msg.fields) {
     if (field.name == "time_offset_us") {
       has_timing = true;
     } else if (field.name == "intensity") {
@@ -34,7 +34,7 @@ void Loader::parsePointcloudMsg(const sensor_msgs::PointCloud2 msg,
     Pointcloud raw_pointcloud;
     pcl::fromROSMsg(msg, raw_pointcloud);
 
-    for (const Point& raw_point : raw_pointcloud) {
+    for (const Point &raw_point : raw_pointcloud) {
       PointAllFields point;
       point.x = raw_point.x;
       point.y = raw_point.y;
@@ -53,7 +53,7 @@ void Loader::parsePointcloudMsg(const sensor_msgs::PointCloud2 msg,
     pcl::PointCloud<pcl::PointXYZ> raw_pointcloud;
     pcl::fromROSMsg(msg, raw_pointcloud);
 
-    for (const pcl::PointXYZ& raw_point : raw_pointcloud) {
+    for (const pcl::PointXYZ &raw_point : raw_pointcloud) {
       PointAllFields point;
       point.x = raw_point.x;
       point.y = raw_point.y;
@@ -70,9 +70,9 @@ void Loader::parsePointcloudMsg(const sensor_msgs::PointCloud2 msg,
   }
 }
 
-bool Loader::loadPointcloudFromROSBag(const std::string& bag_path,
-                                      const Scan::Config& scan_config,
-                                      Lidar* lidar) {
+bool Loader::loadPointcloudFromROSBag(const std::string &bag_path,
+                                      const Scan::Config &scan_config,
+                                      Lidar *lidar) {
   rosbag::Bag bag;
   try {
     bag.open(bag_path, rosbag::bagmode::Read);
@@ -86,7 +86,7 @@ bool Loader::loadPointcloudFromROSBag(const std::string& bag_path,
   rosbag::View view(bag, rosbag::TypeQuery(types));
 
   size_t scan_num = 0;
-  for (const rosbag::MessageInstance& m : view) {
+  for (const rosbag::MessageInstance &m : view) {
     std::cout << " Loading scan: \e[1m" << scan_num++ << "\e[0m from ros bag"
               << '\r' << std::flush;
 
@@ -110,7 +110,7 @@ bool Loader::loadPointcloudFromROSBag(const std::string& bag_path,
   return true;
 }
 
-bool Loader::loadTformFromROSBag(const std::string& bag_path, Odom* odom) {
+bool Loader::loadTformFromROSBag(const std::string &bag_path, Odom *odom) {
   rosbag::Bag bag;
   try {
     bag.open(bag_path, rosbag::bagmode::Read);
@@ -124,7 +124,7 @@ bool Loader::loadTformFromROSBag(const std::string& bag_path, Odom* odom) {
   rosbag::View view(bag, rosbag::TypeQuery(types));
 
   size_t tform_num = 0;
-  for (const rosbag::MessageInstance& m : view) {
+  for (const rosbag::MessageInstance &m : view) {
     std::cout << " Loading transform: \e[1m" << tform_num++
               << "\e[0m from ros bag" << '\r' << std::flush;
 
@@ -152,8 +152,33 @@ bool Loader::loadTformFromROSBag(const std::string& bag_path, Odom* odom) {
   return true;
 }
 
-bool Loader::loadTformFromMaplabCSV(const std::string& csv_path, Odom* odom) {
+bool Loader::loadTformFromMaplabCSV(const std::string &csv_path, Odom *odom) {
   std::ifstream file(csv_path, std::ifstream::in);
+
+  // checking the first line for the file format
+  std::string header;
+  std::getline(file, header);
+  if (!header[0] == '#') {
+    ROS_ERROR("Could not find header in first line of CSV.");
+  }
+  std::stringstream line_stream(header);
+  std::string cell;
+  size_t column_num = 0;
+  bool parsing_success = false;
+  while (std::getline(line_stream, cell, ',')) {
+    if (cell == " p_G_Ix [m]") {
+      first_tf_column_ = column_num;
+      ROS_INFO("Parsed CSV format from header.");
+      parsing_success = true;
+      break;
+    }
+    column_num++;
+  }
+  if (!header[0] == '#' || !parsing_success) {
+    ROS_WARN("Could not parse CSV header, assuming first data column is 3 "
+             "(starting at 0).");
+    first_tf_column_ = 3;
+  }
 
   size_t tform_num = 0;
   while (file.peek() != EOF) {
@@ -172,8 +197,8 @@ bool Loader::loadTformFromMaplabCSV(const std::string& csv_path, Odom* odom) {
 }
 
 // lots of potential failure cases not checked
-bool Loader::getNextCSVTransform(std::istream& str, Timestamp* stamp,
-                                 Transform* T) {
+bool Loader::getNextCSVTransform(std::istream &str, Timestamp *stamp,
+                                 Transform *T) {
   std::string line;
   std::getline(str, line);
 
@@ -190,18 +215,18 @@ bool Loader::getNextCSVTransform(std::istream& str, Timestamp* stamp,
     data.push_back(cell);
   }
 
-  if (data.size() < 9) {
+  if (data.size() < first_tf_column_ + 7) {
     return false;
   }
 
-  constexpr size_t TIME = 0;
-  constexpr size_t X = 2;
-  constexpr size_t Y = 3;
-  constexpr size_t Z = 4;
-  constexpr size_t RW = 5;
-  constexpr size_t RX = 6;
-  constexpr size_t RY = 7;
-  constexpr size_t RZ = 8;
+  size_t TIME = 0;
+  size_t X = first_tf_column_;
+  size_t Y = first_tf_column_ + 1;
+  size_t Z = first_tf_column_ + 2;
+  size_t RW = first_tf_column_ + 3;
+  size_t RX = first_tf_column_ + 4;
+  size_t RY = first_tf_column_ + 5;
+  size_t RZ = first_tf_column_ + 6;
 
   *stamp = std::stoll(data[TIME]) / 1000ll;
   *T = Transform(Transform::Translation(std::stod(data[X]), std::stod(data[Y]),
@@ -212,4 +237,4 @@ bool Loader::getNextCSVTransform(std::istream& str, Timestamp* stamp,
   return true;
 }
 
-}  // namespace lidar_align
+} // namespace lidar_align
