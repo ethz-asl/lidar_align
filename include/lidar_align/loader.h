@@ -11,32 +11,32 @@
 namespace lidar_align {
 
 class Loader {
- public:
+public:
   struct Config {
     int use_n_scans = std::numeric_limits<int>::max();
   };
 
-  Loader(const Config& config);
+  Loader(const Config &config);
 
   void parsePointcloudMsg(const sensor_msgs::PointCloud2 msg,
-                          LoaderPointcloud* pointcloud);
+                          LoaderPointcloud *pointcloud);
 
-  bool loadPointcloudFromROSBag(const std::string& bag_path,
-                                const Scan::Config& scan_config, Lidar* lidar);
+  bool loadPointcloudFromROSBag(const std::string &bag_path,
+                                const Scan::Config &scan_config, Lidar *lidar);
 
-  bool loadTformFromROSBag(const std::string& bag_path, Odom* odom);
+  bool loadTformFromROSBag(const std::string &bag_path, Odom *odom);
 
-  bool loadTformFromMaplabCSV(const std::string& csv_path, Odom* odom);
+  bool loadTformFromMaplabCSV(const std::string &csv_path, Odom *odom);
 
-  static Config getConfig(ros::NodeHandle* nh);
+  static Config getConfig(ros::NodeHandle *nh);
 
- private:
-  static bool getNextCSVTransform(std::istream& str, Timestamp* stamp,
-                                  Transform* T);
+private:
+  bool getNextCSVTransform(std::istream &str, Timestamp *stamp, Transform *T);
 
   Config config_;
+  uint first_tf_column_;
 };
-}  // namespace lidar_align
+} // namespace lidar_align
 
 POINT_CLOUD_REGISTER_POINT_STRUCT(
     lidar_align::PointAllFields,
@@ -45,4 +45,4 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(
         uint16_t, reflectivity, reflectivity)(uint16_t, intensity,
                                               intensity)(uint8_t, ring, ring))
 
-#endif  // LIDAR_ALIGN_ALIGNER_H_
+#endif // LIDAR_ALIGN_ALIGNER_H_
