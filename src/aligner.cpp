@@ -1,5 +1,7 @@
 #include "lidar_align/aligner.h"
 
+#include <nlopt.hpp>
+
 namespace lidar_align {
 
 Aligner::Aligner(const Config& config) : config_(config){};

@@ -4,7 +4,6 @@
 #include <ros/ros.h>
 #include <future>
 #include <limits>
-#include <nlopt.hpp>
 
 #include "lidar_align/sensors.h"
 
